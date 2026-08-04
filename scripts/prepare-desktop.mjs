@@ -9,7 +9,7 @@ const desktopServer = path.join(root, 'desktop', 'server');
 const desktopClient = path.join(root, 'desktop', 'client');
 
 for (const [src, label] of [[serverDist, 'server/dist'], [clientDist, 'client/dist']]) {
-  if (!existsSync(src as string)) {
+  if (!existsSync(src)) {
     console.error(`Missing ${label} — run "npm run build" first`);
     process.exit(1);
   }
