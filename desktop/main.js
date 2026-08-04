@@ -51,7 +51,11 @@ function createWindow() {
 
   mainWindow.maximize();
   mainWindow.loadURL(`http://127.0.0.1:${serverPort}/`);
-  mainWindow.once('ready-to-show', () => mainWindow?.show());
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+    // Open DevTools for debugging — remove in final production
+    mainWindow?.webContents.openDevTools();
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(`http://127.0.0.1:${serverPort}`)) {
