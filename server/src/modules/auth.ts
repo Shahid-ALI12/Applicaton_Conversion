@@ -24,7 +24,7 @@ authRouter.post('/login', loginLimiter, validateBody(z.object({
     throw AppError.unauthorized('Username ya password ghalat hai.');
   }
 
-  const token = jwt.sign({ userId: row.id, role: row.role }, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
+  const token = jwt.sign({ userId: row.id, role: row.role }, config.jwtSecret, { expiresIn: config.jwtExpiresIn } as jwt.SignOptions);
   res.json({ token, user: { id: row.id, name: row.name, username: row.username, role: row.role } });
 });
 

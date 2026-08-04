@@ -2,7 +2,7 @@ import BetterSqlite3 from 'better-sqlite3';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 
-export const db = new BetterSqlite3(config.dbFile, { verbose: config.isProd ? undefined : undefined });
+export const db: BetterSqlite3.Database = new BetterSqlite3(config.dbFile);
 
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');

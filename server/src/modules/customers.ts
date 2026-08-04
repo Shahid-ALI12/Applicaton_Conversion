@@ -1,181 +1,126 @@
+import { Router } from 'express';
 import { z } from 'zod';
-import { Router, Request, Response, NextFunction } from 'express';
-import { getDb, round2 } from '../db/connection.js';
+import { db, round2 } from '../db/connection.js';
 import { AppError } from '../errors.js';
-import { createCrudRouter } from './crudFactory.js';
 import { requireAuth } from '../middleware/auth.js';
-import { parsePagination, offset, paginatedResponse, paramInt } from '../utils/pagination.js';
-import { getCustomerBalanceDetail } from '../services/balances.js';
+import { validateBody } from '../middleware/validate.js';
+import { parsePage } from '../utils/pagination.js';
+import { cacheInvalidate } from '../utils/cache.js';
+import { getCustomerBalance } from '../services/balances.js';
 
-const createCustomerSchema = z.object({
-  name: z.string().min(1),
-  type: z.enum(['credit', 'cash']).default('credit'),
-  phone: z.string().nullable().optional(),
-  is_active: z.number().int().min(0).max(1).default(1),
-  opening_balance: z.number().min(0).default(0),
-  advance_payment: z.number().min(0).default(0),
-});
-
-const updateCustomerSchema = z.object({
-  name: z.string().min(1).optional(),
-  type: z.enum(['credit', 'cash']).optional(),
-  phone: z.string().nullable().optional(),
-  is_active: z.number().int().min(0).max(1).optional(),
-  opening_balance: z.number().min(0).optional(),
-  advance_payment: z.number().min(0).optional(),
-});
-
-const baseRouter = createCrudRouter({
-  table: 'customers',
-  listFields: 'id, name, type, phone, is_active, opening_balance, advance_payment, deleted_at, created_at',
-  searchFields: ['name', 'phone'],
-  createSchema: createCustomerSchema,
-  updateSchema: updateCustomerSchema,
-  orderBy: 'name ASC',
-  softDelete: true,
-});
-
-const router = Router();
+export const customersRouter = Router();
 
 // LIST with balance
-router.get('/', requireAuth, (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const db = getDb();
-    const { page, pageSize, search } = parsePagination(req);
-    const o = offset(page, pageSize);
-
-    let whereClause = 'WHERE deleted_at IS NULL';
-    const params: any[] = [];
-
-    if (search) {
-      whereClause += ' AND (name LIKE ? OR phone LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`);
-    }
-
-    const total = (db.prepare(`SELECT COUNT(*) as total FROM customers ${whereClause}`).get(...params) as any).total;
-    const data = db.prepare(
-      `SELECT id, name, type, phone, is_active, opening_balance, advance_payment, deleted_at, created_at FROM customers ${whereClause} ORDER BY name ASC LIMIT ? OFFSET ?`
-    ).all(...params, pageSize, o) as any[];
-
-    const enriched = data.map((c) => {
-      const balance = getCustomerBalanceDetail(c.id);
-      return {
-        ...c,
-        opening_balance: round2(c.opening_balance),
-        advance_payment: round2(c.advance_payment),
-        net_balance: balance?.netBalance ?? 0,
-      };
-    });
-
-    paginatedResponse(res, enriched, total, page, pageSize);
-  } catch (err) {
-    next(err);
+customersRouter.get('/', requireAuth, (req, res) => {
+  const { page, pageSize, search } = parsePage(req.query as Record<string, unknown>);
+  let where = 'deleted_at IS NULL';
+  const params: (string | number)[] = [];
+  if (search) {
+    where += ' AND (name LIKE ? OR phone LIKE ?)';
+    params.push(`%${search}%`, `%${search}%`);
   }
+
+  const total = (db.prepare(`SELECT COUNT(*) as c FROM customers WHERE ${where}`).get(...params) as { c: number }).c;
+  const offset = (page - 1) * pageSize;
+  const rows = db.prepare(
+    `SELECT id, name, type, phone, is_active, opening_balance, advance_payment, deleted_at, created_at FROM customers WHERE ${where} ORDER BY name ASC LIMIT ? OFFSET ?`
+  ).all(...params, pageSize, offset) as Record<string, unknown>[];
+
+  const enriched = rows.map((c) => {
+    const balance = getCustomerBalance(Number(c.id));
+    return {
+      ...c,
+      opening_balance: round2(Number(c.opening_balance)),
+      advance_payment: round2(Number(c.advance_payment)),
+      net_balance: balance?.balance_due ?? 0,
+    };
+  });
+
+  res.json({ rows: enriched, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
 });
 
 // GET by ID with balance
-router.get('/:id', requireAuth, (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const db = getDb();
-    const id = paramInt(req, 'id');
-    const customer = db.prepare(
-      'SELECT id, name, type, phone, is_active, opening_balance, advance_payment, deleted_at, created_at FROM customers WHERE id = ?'
-    ).get(id) as any;
+customersRouter.get('/:id', requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const customer = db.prepare(
+    'SELECT id, name, type, phone, is_active, opening_balance, advance_payment, deleted_at, created_at FROM customers WHERE id = ?'
+  ).get(id) as Record<string, unknown> | undefined;
 
-    if (!customer) {
-      next(AppError.notFound('Customer'));
-      return;
-    }
+  if (!customer) throw AppError.notFound('Customer');
 
-    const balance = getCustomerBalanceDetail(id);
-    res.json({
-      data: {
-        ...customer,
-        opening_balance: round2(customer.opening_balance),
-        advance_payment: round2(customer.advance_payment),
-        net_balance: balance?.netBalance ?? 0,
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
+  const balance = getCustomerBalance(id);
+  res.json({
+    ...customer,
+    opening_balance: round2(Number(customer.opening_balance)),
+    advance_payment: round2(Number(customer.advance_payment)),
+    net_balance: balance.balance_due,
+  });
 });
 
 // CREATE
-router.post('/', requireAuth, (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const db = getDb();
-    const parsed = createCustomerSchema.parse(req.body);
-    const info = db.prepare(
-      'INSERT INTO customers (name, type, phone, is_active, opening_balance, advance_payment) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(
-      parsed.name,
-      parsed.type,
-      parsed.phone ?? null,
-      parsed.is_active,
-      round2(parsed.opening_balance),
-      round2(parsed.advance_payment)
-    );
-    const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(info.lastInsertRowid);
-    res.status(201).json({ data: customer });
-  } catch (err) {
-    next(err);
-  }
+const createCustomerSchema = z.object({
+  name: z.string().trim().min(1),
+  type: z.enum(['credit', 'cash']).default('credit'),
+  phone: z.string().nullable().optional(),
+  opening_balance: z.number().nonnegative().default(0),
+  advance_payment: z.number().nonnegative().default(0),
+  is_active: z.boolean().default(true),
+});
+
+customersRouter.post('/', requireAuth, validateBody(createCustomerSchema), (req, res) => {
+  const body = req.body as { name: string; type: string; phone?: string | null; opening_balance: number; advance_payment: number; is_active: boolean };
+  const r = db.prepare(
+    'INSERT INTO customers (name, type, phone, is_active, opening_balance, advance_payment) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(body.name, body.type, body.phone ?? null, body.is_active ? 1 : 0, round2(body.opening_balance), round2(body.advance_payment));
+  cacheInvalidate('customers');
+  const row = db.prepare('SELECT * FROM customers WHERE id = ?').get(Number(r.lastInsertRowid));
+  res.status(201).json(row);
 });
 
 // UPDATE
-router.put('/:id', requireAuth, (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const db = getDb();
-    const id = paramInt(req, 'id');
-    const existing = db.prepare('SELECT id FROM customers WHERE id = ?').get(id);
-    if (!existing) {
-      next(AppError.notFound('Customer'));
-      return;
+const updateCustomerSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  type: z.enum(['credit', 'cash']).optional(),
+  phone: z.string().nullable().optional(),
+  opening_balance: z.number().nonnegative().optional(),
+  advance_payment: z.number().nonnegative().optional(),
+  is_active: z.boolean().optional(),
+});
+
+customersRouter.put('/:id', requireAuth, validateBody(updateCustomerSchema), (req, res) => {
+  const id = Number(req.params.id);
+  const existing = db.prepare('SELECT id FROM customers WHERE id = ?').get(id);
+  if (!existing) throw AppError.notFound('Customer');
+
+  const parsed = (req.body as Record<string, unknown>);
+  const cols: string[] = [];
+  const vals: (string | number | null)[] = [];
+  for (const [key, value] of Object.entries(parsed)) {
+    if (value !== undefined) {
+      cols.push(key);
+      if (key === 'opening_balance' || key === 'advance_payment') vals.push(round2(Number(value)));
+      else if (key === 'is_active') vals.push(value ? 1 : 0);
+      else vals.push(value as string | number | null);
     }
-
-    const parsed = updateCustomerSchema.parse(req.body);
-    const fields: string[] = [];
-    const values: any[] = [];
-
-    for (const [key, value] of Object.entries(parsed)) {
-      if (value !== undefined) {
-        fields.push(key);
-        values.push(key === 'opening_balance' || key === 'advance_payment' ? round2(value as number) : value);
-      }
-    }
-
-    if (fields.length === 0) {
-      const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
-      res.json({ data: customer });
-      return;
-    }
-
-    const setClause = fields.map((f) => `${f} = ?`).join(', ');
-    db.prepare(`UPDATE customers SET ${setClause} WHERE id = ?`).run(...values, id);
-
-    const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
-    res.json({ data: customer });
-  } catch (err) {
-    next(err);
   }
+  if (cols.length === 0) {
+    const row = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+    res.json(row);
+    return;
+  }
+  const sets = cols.map(c => `${c} = ?`).join(', ');
+  db.prepare(`UPDATE customers SET ${sets} WHERE id = ?`).run(...vals, id);
+  cacheInvalidate('customers');
+  const row = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+  res.json(row);
 });
 
 // DELETE (soft)
-router.delete('/:id', requireAuth, (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const db = getDb();
-    const id = paramInt(req, 'id');
-    const existing = db.prepare('SELECT id FROM customers WHERE id = ?').get(id);
-    if (!existing) {
-      next(AppError.notFound('Customer'));
-      return;
-    }
-    db.prepare("UPDATE customers SET deleted_at = datetime('now') WHERE id = ?").run(id);
-    res.json({ data: { id, deleted: true } });
-  } catch (err) {
-    next(err);
-  }
+customersRouter.delete('/:id', requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const existing = db.prepare('SELECT id FROM customers WHERE id = ?').get(id);
+  if (!existing) throw AppError.notFound('Customer');
+  db.prepare("UPDATE customers SET deleted_at = datetime('now') WHERE id = ?").run(id);
+  cacheInvalidate('customers');
+  res.json({ ok: true, id, deleted: true });
 });
-
-export const customersRouter = router;

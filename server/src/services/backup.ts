@@ -1,4 +1,3 @@
-import { createBackup } from 'better-sqlite3';
 import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { db } from '../db/connection.js';
@@ -28,7 +27,8 @@ export function stopBackupScheduler(): void {
 export function runBackup(): string {
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const file = path.join(BACKUP_DIR, `backup-${ts}.db`);
-  createBackup(db, file);
+  // better-sqlite3 backup API: db.backup(destinationFile)
+  db.backup(file);
   pruneBackups();
   logger.info({ file }, 'Backup created');
   return file;

@@ -1,56 +1,116 @@
-import { z } from 'zod';
-import { createCrudRouter } from './crudFactory.js';
-import { requireAuth } from '../middleware/auth.js';
 import { Router } from 'express';
-import { getDb } from '../db/connection.js';
-import { paramInt } from '../utils/pagination.js';
-import { ensureStockRecord } from '../services/stock.js';
+import { z } from 'zod';
+import { db } from '../db/connection.js';
+import { AppError } from '../errors.js';
+import { requireAuth } from '../middleware/auth.js';
+import { validateBody } from '../middleware/validate.js';
+import { parsePage } from '../utils/pagination.js';
+import { cacheInvalidate } from '../utils/cache.js';
 
+export const productsRouter = Router();
+
+// LIST
+productsRouter.get('/', requireAuth, (req, res) => {
+  const { page, pageSize, search } = parsePage(req.query as Record<string, unknown>);
+  let where = 'deleted_at IS NULL';
+  const params: (string | number)[] = [];
+  if (search) {
+    where += ' AND (name LIKE ? OR urdu_name LIKE ?)';
+    params.push(`%${search}%`, `%${search}%`);
+  }
+  const total = (db.prepare(`SELECT COUNT(*) as c FROM products WHERE ${where}`).get(...params) as { c: number }).c;
+  const offset = (page - 1) * pageSize;
+  const rows = db.prepare(
+    `SELECT id, name, urdu_name, default_rate, is_active, deleted_at, created_at FROM products WHERE ${where} ORDER BY name ASC LIMIT ? OFFSET ?`
+  ).all(...params, pageSize, offset);
+  res.json({ rows, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
+});
+
+// GET by ID
+productsRouter.get('/:id', requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const row = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  if (!row) throw AppError.notFound('Product');
+  res.json(row);
+});
+
+// CREATE
 const createProductSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   urdu_name: z.string().nullable().optional(),
-  default_rate: z.number().min(0).default(0),
-  is_active: z.number().int().min(0).max(1).default(1),
+  default_rate: z.number().nonnegative().default(0),
+  is_active: z.boolean().default(true),
 });
 
+productsRouter.post('/', requireAuth, validateBody(createProductSchema), (req, res) => {
+  const body = req.body as { name: string; urdu_name?: string | null; default_rate: number; is_active: boolean };
+  const r = db.prepare(
+    'INSERT INTO products (name, urdu_name, default_rate, is_active) VALUES (?, ?, ?, ?)'
+  ).run(body.name, body.urdu_name ?? null, body.default_rate, body.is_active ? 1 : 0);
+  cacheInvalidate('products');
+  const row = db.prepare('SELECT * FROM products WHERE id = ?').get(Number(r.lastInsertRowid));
+  res.status(201).json(row);
+});
+
+// UPDATE
 const updateProductSchema = z.object({
-  name: z.string().min(1).optional(),
+  name: z.string().trim().min(1).optional(),
   urdu_name: z.string().nullable().optional(),
-  default_rate: z.number().min(0).optional(),
-  is_active: z.number().int().min(0).max(1).optional(),
+  default_rate: z.number().nonnegative().optional(),
+  is_active: z.boolean().optional(),
 });
 
-const router = createCrudRouter({
-  table: 'products',
-  listFields: 'id, name, urdu_name, default_rate, is_active, deleted_at, created_at',
-  searchFields: ['name', 'urdu_name'],
-  createSchema: createProductSchema,
-  updateSchema: updateProductSchema,
-  orderBy: 'name ASC',
-  softDelete: true,
-  extraRoutes: (router: Router) => {
-    // POST /:id/stock-init - Initialize stock records for a product at all locations
-    router.post('/:id/stock-init', requireAuth, (req, res, next) => {
-      try {
-        const db = getDb();
-        const productId = paramInt(req, 'id');
-        const product = db.prepare('SELECT id FROM products WHERE id = ?').get(productId);
-        if (!product) {
-          next(new Error('Product not found'));
-          return;
-        }
+productsRouter.put('/:id', requireAuth, validateBody(updateProductSchema), (req, res) => {
+  const id = Number(req.params.id);
+  const existing = db.prepare('SELECT id FROM products WHERE id = ?').get(id);
+  if (!existing) throw AppError.notFound('Product');
 
-        const locations = db.prepare('SELECT id FROM locations').all() as any[];
-        for (const loc of locations) {
-          ensureStockRecord(productId, loc.id);
-        }
-
-        res.json({ data: { message: 'Stock records initialized' } });
-      } catch (err) {
-        next(err);
-      }
-    });
-  },
+  const parsed = req.body as Record<string, unknown>;
+  const cols: string[] = [];
+  const vals: (string | number | null)[] = [];
+  for (const [key, value] of Object.entries(parsed)) {
+    if (value !== undefined) {
+      cols.push(key);
+      if (key === 'is_active') vals.push(value ? 1 : 0);
+      else vals.push(value as string | number | null);
+    }
+  }
+  if (cols.length === 0) {
+    const row = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+    res.json(row);
+    return;
+  }
+  const sets = cols.map(c => `${c} = ?`).join(', ');
+  db.prepare(`UPDATE products SET ${sets} WHERE id = ?`).run(...vals, id);
+  cacheInvalidate('products');
+  const row = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  res.json(row);
 });
 
-export const productsRouter = router;
+// DELETE (soft)
+productsRouter.delete('/:id', requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const existing = db.prepare('SELECT id FROM products WHERE id = ?').get(id);
+  if (!existing) throw AppError.notFound('Product');
+  db.prepare("UPDATE products SET deleted_at = datetime('now') WHERE id = ?").run(id);
+  cacheInvalidate('products');
+  res.json({ ok: true, id, deleted: true });
+});
+
+// POST /:id/stock-init — Initialize stock records for a product at all locations
+productsRouter.post('/:id/stock-init', requireAuth, (req, res) => {
+  const productId = Number(req.params.id);
+  const product = db.prepare('SELECT id FROM products WHERE id = ?').get(productId);
+  if (!product) throw AppError.notFound('Product');
+
+  const locations = db.prepare('SELECT id FROM locations').all() as { id: number }[];
+  for (const loc of locations) {
+    db.prepare(`
+      INSERT INTO product_stock (product_id, location_id, stock_quantity, last_bag_weight_kg)
+      VALUES (?, ?, 0, NULL)
+      ON CONFLICT (product_id, location_id) DO NOTHING
+    `).run(productId, loc.id);
+  }
+  cacheInvalidate('product_stock');
+  res.json({ ok: true, message: 'Stock records initialized' });
+});

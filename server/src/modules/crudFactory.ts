@@ -7,6 +7,8 @@ import { validateBody } from '../middleware/validate.js';
 import { parsePage, type PageResult } from '../utils/pagination.js';
 import { cacheInvalidate } from '../utils/cache.js';
 
+type Binding = string | number | bigint | Buffer | null;
+
 interface CrudConfig {
   table: string;
   listFields?: string;
@@ -39,10 +41,11 @@ export function createCrudRouter(config: CrudConfig): Router {
     }
     if (extraWhere) where += ` AND ${extraWhere}`;
 
-    const total = (db.prepare(`SELECT COUNT(*) as c FROM ${table} WHERE ${where}`).get(...params) as { c: number }).c;
+    const total = (db.prepare(`SELECT COUNT(*) as c FROM ${table} WHERE ${where}`).get(...params as Binding[]) as { c: number }).c;
     const offset = (page - 1) * pageSize;
-    const rows = db.prepare(`SELECT ${fields} FROM ${table} WHERE ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`).all(...params, pageSize, offset);
-    const result: PageResult<typeof rows> = { rows, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+    const allParams: Binding[] = [...params as Binding[], pageSize, offset];
+    const rows = db.prepare(`SELECT ${fields} FROM ${table} WHERE ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`).all(...allParams);
+    const result = { rows, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
     res.json(result);
   });
 

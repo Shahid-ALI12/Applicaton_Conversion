@@ -1,33 +1,19 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
-import { paramInt } from '../utils/pagination.js';
-import { getAllStockBalances, getProductStockSummary } from '../services/stock.js';
+import { getStockBalance } from '../services/stock.js';
 
-const router = Router();
+export const stockRouter = Router();
 
 // GET / - All stock balances
-router.get('/', requireAuth, (_req: Request, res: Response, next: NextFunction) => {
-  try {
-    const balances = getAllStockBalances();
-    res.json({ data: balances });
-  } catch (err) {
-    next(err);
-  }
+stockRouter.get('/', requireAuth, (_req, res) => {
+  const balances = getStockBalance();
+  res.json(balances);
 });
 
 // GET /:productId - Stock for a specific product across all locations
-router.get('/:productId', requireAuth, (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const productId = paramInt(req, 'productId');
-    if (isNaN(productId)) {
-      next(new Error('Invalid product ID'));
-      return;
-    }
-    const summary = getProductStockSummary(productId);
-    res.json({ data: summary });
-  } catch (err) {
-    next(err);
-  }
+stockRouter.get('/:productId', requireAuth, (req, res) => {
+  const productId = Number(req.params.productId);
+  if (isNaN(productId)) throw new Error('Invalid product ID');
+  const summary = getStockBalance(productId);
+  res.json(summary);
 });
-
-export const stockRouter = router;
