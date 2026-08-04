@@ -20,6 +20,8 @@ import { settingsRouter } from './modules/settings.js';
 import { backupsRouter } from './modules/backups.js';
 import { createCrudRouter } from './modules/crudFactory.js';
 import { stockRouter } from './modules/stock.js';
+import { customersRouter } from './modules/customers.js';
+import { productsRouter } from './modules/products.js';
 import { z } from 'zod';
 import expressStatic from 'serve-static';
 import path from 'node:path';
@@ -49,27 +51,11 @@ export function createApp() {
   // Users
   app.use('/api/users', usersRouter);
 
-  // Products (CRUD factory)
-  app.use('/api/products', createCrudRouter({
-    table: 'products',
-    listFields: 'id, name, urdu_name, default_rate, is_active, deleted_at, created_at',
-    searchFields: ['name'],
-    createSchema: z.object({ name: z.string().trim().min(1), urdu_name: z.string().nullable().optional(), default_rate: z.number().nonnegative().default(0), is_active: z.boolean().default(true) }),
-    updateSchema: z.object({ name: z.string().trim().min(1).optional(), urdu_name: z.string().nullable().optional(), default_rate: z.number().nonnegative().optional(), is_active: z.boolean().optional(), deleted_at: z.string().nullable().optional() }),
-    extraWhere: 'deleted_at IS NULL',
-    orderBy: 'name ASC',
-  }));
+  // Products (custom router with soft-delete)
+  app.use('/api/products', productsRouter);
 
-  // Customers (CRUD factory)
-  app.use('/api/customers', createCrudRouter({
-    table: 'customers',
-    listFields: 'id, name, type, phone, is_active, opening_balance, advance_payment, deleted_at, created_at',
-    searchFields: ['name', 'phone'],
-    createSchema: z.object({ name: z.string().trim().min(1), type: z.enum(['credit', 'cash']).default('credit'), phone: z.string().nullable().optional(), opening_balance: z.number().default(0), advance_payment: z.number().default(0), is_active: z.boolean().default(true) }),
-    updateSchema: z.object({ name: z.string().trim().min(1).optional(), type: z.enum(['credit', 'cash']).optional(), phone: z.string().nullable().optional(), opening_balance: z.number().optional(), advance_payment: z.number().optional(), is_active: z.boolean().optional(), deleted_at: z.string().nullable().optional() }),
-    extraWhere: 'deleted_at IS NULL',
-    orderBy: 'name ASC',
-  }));
+  // Customers (custom router with soft-delete)
+  app.use('/api/customers', customersRouter);
 
   // Suppliers (CRUD factory)
   app.use('/api/suppliers', createCrudRouter({

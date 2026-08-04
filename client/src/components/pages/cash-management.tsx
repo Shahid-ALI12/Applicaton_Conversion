@@ -65,9 +65,9 @@ export default function CashManagementPage() {
   const { data: transfersData, isLoading: transfersLoading } = useCashTransfers();
   const invalidate = useInvalidateAfterMutation();
 
-  const accounts: CashAccount[] = accountsData?.accounts ?? [];
-  const balances: Record<string, number> = balancesData?.balances ?? {};
-  const transfers: RawTransfer[] = transfersData?.transfers ?? [];
+  const accounts: CashAccount[] = Array.isArray(accountsData) ? accountsData : [];
+  const balances: Record<string, number> = (balancesData && typeof balancesData === 'object' && !Array.isArray(balancesData)) ? balancesData as Record<string, number> : {};
+  const transfers: RawTransfer[] = transfersData?.rows ?? [];
 
   // Transfer form state
   const [transferDirection, setTransferDirection] = useState<"locker-to-hand" | "hand-to-locker">("locker-to-hand");

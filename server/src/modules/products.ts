@@ -87,7 +87,7 @@ productsRouter.put('/:id', requireAuth, validateBody(updateProductSchema), (req,
   res.json(row);
 });
 
-// DELETE (soft)
+// DELETE (soft — set deleted_at)
 productsRouter.delete('/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
   const existing = db.prepare('SELECT id FROM products WHERE id = ?').get(id);
@@ -95,6 +95,26 @@ productsRouter.delete('/:id', requireAuth, (req, res) => {
   db.prepare("UPDATE products SET deleted_at = datetime('now') WHERE id = ?").run(id);
   cacheInvalidate('products');
   res.json({ ok: true, id, deleted: true });
+});
+
+// PUT /:id/restore — restore soft-deleted product
+productsRouter.put('/:id/restore', requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const existing = db.prepare('SELECT id FROM products WHERE id = ?').get(id);
+  if (!existing) throw AppError.notFound('Product');
+  db.prepare('UPDATE products SET deleted_at = NULL WHERE id = ?').run(id);
+  cacheInvalidate('products');
+  const row = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  res.json(row);
+});
+
+// DELETE /:id/permanent — hard delete
+productsRouter.delete('/:id/permanent', requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const result = db.prepare('DELETE FROM products WHERE id = ?').run(id);
+  if (result.changes === 0) throw AppError.notFound('Product');
+  cacheInvalidate('products');
+  res.json({ ok: true });
 });
 
 // POST /:id/stock-init — Initialize stock records for a product at all locations

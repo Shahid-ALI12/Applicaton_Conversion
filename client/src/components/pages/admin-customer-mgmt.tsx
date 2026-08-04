@@ -96,7 +96,7 @@ export default function AdminCustomerManagement() {
         }
         throw new Error(json.error || "Failed to fetch");
       }
-      const data = json.customers.map((c: Record<string, unknown>) => ({
+      const data = json.rows.map((c: Record<string, unknown>) => ({
         id: c.id as string, name: c.name as string, email: c.email as string,
         password: c.password as string, subscription_type: c.subscription_type as SubscriptionType,
         subscription_start: c.subscription_start as string, subscription_end: c.subscription_end as string,

@@ -354,7 +354,7 @@ export async function generateCustomerBillPDF(bill: CustomerBillData): Promise<C
     const unitLabel = sale.unit_type === "kg" ? "kg" : "bags";
     const billAmount = sale.quantity * sale.rate_per_bag + sale.rickshaw_fare;
     // Show driver name on a second line in the Product cell (if present)
-    const productName = sale.products?.name || `Product #${sale.product_id}`;
+    const productName = sale.product_name || `Product #${sale.product_id}`;
     const productCell = sale.rickshaw_driver_name
       ? `${productName}\n(Driver: ${sale.rickshaw_driver_name})`
       : productName;

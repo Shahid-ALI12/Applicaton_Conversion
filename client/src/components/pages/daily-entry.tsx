@@ -164,11 +164,11 @@ export default function DailyEntryPage() {
 
   const loadMasterData = useCallback(async () => {
     const errors: string[] = [];
-    try { setProducts(await fetchCached<Product>("products", "/api/products?active=true", "products")); }
+    try { setProducts(await fetchCached<Product>("products", "/api/products?active=true", "rows")); }
     catch (e: any) { errors.push("Products"); }
-    try { setCustomers(await fetchCached<Customer>("customers", "/api/customers?active=true", "customers")); }
+    try { setCustomers(await fetchCached<Customer>("customers", "/api/customers?active=true", "rows")); }
     catch (e: any) { errors.push("Customers"); }
-    try { setStockData(await fetchCached<ProductStock>("stock", "/api/stock", "stock")); }
+    try { setStockData(await fetchCached<ProductStock>("stock", "/api/stock", "rows")); }
     catch (e: any) { errors.push("Stock"); }
     if (errors.length > 0) toast.error(`Failed to load: ${errors.join(", ")}`);
   }, []);
@@ -183,7 +183,7 @@ export default function DailyEntryPage() {
       const sRes = await apiFetch(`/api/sales?${params.toString()}`);
       if (sRes.ok) {
         const sData = await sRes.json();
-        setSales(sData.sales ?? []);
+        setSales(sData.rows ?? []);
         setSalesTotal(sData.total ?? 0);
         setSalesTotalPages(sData.totalPages ?? 1);
       }
@@ -191,7 +191,7 @@ export default function DailyEntryPage() {
     } catch { toast.error("Failed to load sales"); }
     try {
       const eRes = await apiFetch(`/api/expenses?expense_date=${d}&${bust}`);
-      if (eRes.ok) { const eData = await eRes.json(); setExpenses(eData.expenses ?? []); }
+      if (eRes.ok) { const eData = await eRes.json(); setExpenses(eData.rows ?? []); }
       else toast.error("Failed to load expenses");
     } catch { toast.error("Failed to load expenses"); }
   }, []);
@@ -267,7 +267,7 @@ export default function DailyEntryPage() {
         const res = await apiFetch(`/api/sales?${qs.toString()}`);
         if (!res.ok) throw new Error("Failed to fetch sales");
         const body = await res.json();
-        const rows: any[] = Array.isArray(body?.sales) ? body.sales : [];
+        const rows: any[] = Array.isArray(body?.rows) ? body.rows : [];
         all.push(...rows);
         totalPages = typeof body?.totalPages === "number" ? body.totalPages : 1;
         if (rows.length === 0) break;
@@ -470,10 +470,10 @@ export default function DailyEntryPage() {
         // reflects the latest opening balance.
         if (Math.abs(obNum - obOldValue) > 0.001) {
           try {
-            const upRes = await apiFetch("/api/customers", {
+            const upRes = await apiFetch(`/api/customers/${customerId}`, {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ id: customerId, opening_balance: obNum }),
+              body: JSON.stringify({ opening_balance: obNum }),
             });
             if (upRes.ok) {
               obWasUpdated = true;
@@ -499,8 +499,8 @@ export default function DailyEntryPage() {
         });
         if (!res.ok) throw new Error(await apiError(res, "Failed to create customer"));
         const data = await res.json();
-        customerId = data.customer?.id;
-        if (data.customer) setCustomers((prev) => [...prev, data.customer]);
+        customerId = data?.id;
+        if (data) setCustomers((prev) => [...prev, data]);
       }
 
       const items = cartItems.map((item) => ({
@@ -580,7 +580,7 @@ export default function DailyEntryPage() {
     askConfirm("Delete Sale", `Sale #${saleId} ko database se permanently delete karna hai?`, async () => {
       setConfirmLoading(true);
       try {
-        const res = await apiFetch(`/api/sales?id=${saleId}`, { method: "DELETE" });
+        const res = await apiFetch(`/api/sales/${saleId}`, { method: "DELETE" });
         if (!res.ok) throw new Error(await apiError(res, "Failed"));
         setSales((prev) => prev.filter((s) => s.id !== saleId));
         toast.success("Sale #" + saleId + " delete ho gaya");
@@ -600,7 +600,7 @@ export default function DailyEntryPage() {
       setConfirmLoading(true);
       try {
         // Use /api/mix-orders DELETE — cleans BOTH sales + mix_orders tables
-        const res = await apiFetch(`/api/mix-orders?id=${dbMixOrderId}`, { method: "DELETE" });
+        const res = await apiFetch(`/api/mix-orders/${dbMixOrderId}`, { method: "DELETE" });
         if (!res.ok) throw new Error(await apiError(res, "Failed"));
         // Remove only this mix order's sales from local state
         setSales((prev) => prev.filter((s) => String(s.mix_order_id) !== mixOrderId));
@@ -653,7 +653,7 @@ export default function DailyEntryPage() {
     askConfirm("Delete Expense", `Expense #${expId} ko database se permanently delete karna hai?`, async () => {
       setConfirmLoading(true);
       try {
-        const res = await apiFetch(`/api/expenses?id=${expId}`, { method: "DELETE" });
+        const res = await apiFetch(`/api/expenses/${expId}`, { method: "DELETE" });
         if (!res.ok) throw new Error(await apiError(res, "Failed"));
         setExpenses((prev) => prev.filter((e) => e.id !== expId));
         toast.success("Expense #" + expId + " delete ho gaya");
@@ -755,7 +755,7 @@ export default function DailyEntryPage() {
       async () => {
         setConfirmLoading(true);
         try {
-          const res = await apiFetch(`/api/customer-payments?id=${paymentId}`, {
+          const res = await apiFetch(`/api/customer-payments/${paymentId}`, {
             method: "DELETE",
           });
           if (!res.ok) throw new Error(await apiError(res, "Failed"));
@@ -1496,11 +1496,11 @@ export default function DailyEntryPage() {
                             const unitSuffix = s.unit_type === "kg" ? " kg" : "";
                             return (
                               <TableRow key={s.id}>
-                                <TableCell className="text-sm font-medium">{s.customers?.name ?? "—"}</TableCell>
+                                <TableCell className="text-sm font-medium">{s.customer_name ?? "—"}</TableCell>
                                 <TableCell>
-                                  <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold", s.customers?.type === "credit" ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800")}>{s.customers?.type ?? "—"}</span>
+                                  <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold", customers.find(c => c.id === s.customer_id)?.type === "credit" ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800")}>{customers.find(c => c.id === s.customer_id)?.type ?? "—"}</span>
                                 </TableCell>
-                                <TableCell className="text-sm hidden lg:table-cell">{s.products?.name ?? "—"}</TableCell>
+                                <TableCell className="text-sm hidden lg:table-cell">{s.product_name ?? "—"}</TableCell>
                                 <TableCell className="text-sm text-right">{fmt(s.quantity)}{unitSuffix}</TableCell>
                                 <TableCell className="text-sm text-right hidden sm:table-cell">{fmt(s.rate_per_bag)}</TableCell>
                                 <TableCell className="text-sm text-right hidden md:table-cell">{s.rickshaw_fare > 0 ? fmt(s.rickshaw_fare) : "—"}{s.rickshaw_driver_name && <span className="block text-xs text-slate-400"><Truck className="inline size-3" /> {s.rickshaw_driver_name}</span>}</TableCell>
@@ -1542,7 +1542,7 @@ export default function DailyEntryPage() {
                         </TableHeader>
                         <TableBody>
                           {Array.from(mixGroups.entries()).map(([mixOrderId, lines]) => {
-                            const custName = lines[0].customers?.name ?? "—";
+                            const custName = lines[0].customer_name ?? "—";
                             const totalQty = lines.reduce((sum, l) => sum + l.quantity, 0);
                             const totalMixBill = lines.reduce((sum, l) => sum + l.quantity * l.rate_per_bag, 0);
                             const totalMixCash = lines.reduce((sum, l) => sum + l.cash_received, 0);
@@ -1572,7 +1572,7 @@ export default function DailyEntryPage() {
                                           <TableBody>
                                             {lines.map((l) => (
                                               <TableRow key={l.id} className="bg-transparent hover:bg-purple-100/50 border-0">
-                                                <TableCell className="py-1 text-sm">{l.products?.name}</TableCell>
+                                                <TableCell className="py-1 text-sm">{l.product_name}</TableCell>
                                                 <TableCell className="py-1 text-sm text-right">{fmt(l.quantity)}</TableCell>
                                                 <TableCell className="py-1 text-sm text-right">{fmt(l.rate_per_bag)}</TableCell>
                                                 <TableCell className="py-1 text-sm text-right font-medium">{fmt(l.quantity * l.rate_per_bag)}</TableCell>
@@ -2023,14 +2023,14 @@ export default function DailyEntryPage() {
                       {customerPayments.map((p) => (
                         <TableRow key={p.id}>
                           <TableCell className="text-sm font-medium">
-                            {p.customers?.name ?? `#${p.customer_id}`}
+                            {p.customer_name ?? `#${p.customer_id}`}
                           </TableCell>
                           <TableCell>
                             <span className={cn(
                               "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold",
-                              p.customers?.type === "credit" ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800",
+                              customers.find(c => c.id === p.customer_id)?.type === "credit" ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800",
                             )}>
-                              {p.customers?.type ?? "—"}
+                              {customers.find(c => c.id === p.customer_id)?.type ?? "—"}
                             </span>
                           </TableCell>
                           <TableCell className="text-sm text-right font-bold tabular-nums text-emerald-700">

@@ -115,11 +115,11 @@ export default function ManageCustomersPage() {
   const invalidate = useInvalidateAfterMutation();
 
   const activeCustomers: Customer[] = useMemo(
-    () => (activeQ.data?.customers ?? []) as Customer[],
+    () => (activeQ.data?.rows ?? []) as Customer[],
     [activeQ.data],
   );
   const inactiveCustomers: Customer[] = useMemo(
-    () => (inactiveQ.data?.customers ?? []) as Customer[],
+    () => (inactiveQ.data?.rows ?? []) as Customer[],
     [inactiveQ.data],
   );
 
@@ -217,11 +217,10 @@ export default function ManageCustomersPage() {
     }
     setSubmitting(true);
     try {
-      const res = await apiFetch("/api/customers", {
+      const res = await apiFetch(`/api/customers/${editCustomer.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: editCustomer.id,
           name: editForm.name.trim(),
           type: editForm.type,
           phone: editForm.phone.trim() || null,
@@ -254,10 +253,10 @@ export default function ManageCustomersPage() {
       async () => {
         setConfirmLoading(true);
         try {
-          const res = await apiFetch(`/api/customers?id=${c.id}&mode=soft`, { method: "DELETE" });
+          const res = await apiFetch(`/api/customers/${c.id}`, { method: "DELETE" });
           if (!res.ok) {
             const json = await res.json().catch(() => ({}));
-            if (json?.action !== "soft_deleted") {
+            if (!json?.ok) {
               throw new Error(await apiError(res, "Failed"));
             }
           }
@@ -287,7 +286,7 @@ export default function ManageCustomersPage() {
       async () => {
         setConfirmLoading(true);
         try {
-          const res = await apiFetch(`/api/customers?id=${c.id}&mode=restore`, { method: "DELETE" });
+          const res = await apiFetch(`/api/customers/${c.id}/restore`, { method: "PUT" });
           if (!res.ok) throw new Error(await apiError(res, "Failed"));
           invalidateCache("customers");
           invalidate.invalidateCustomers();
@@ -315,7 +314,7 @@ export default function ManageCustomersPage() {
       async () => {
         setConfirmLoading(true);
         try {
-          const res = await apiFetch(`/api/customers?id=${c.id}&mode=permanent`, { method: "DELETE" });
+          const res = await apiFetch(`/api/customers/${c.id}/permanent`, { method: "DELETE" });
           if (!res.ok) throw new Error(await apiError(res, "Failed"));
           invalidateCache("customers");
           invalidate.invalidateCustomers();
@@ -348,7 +347,7 @@ export default function ManageCustomersPage() {
         "/api/customers",
         {},
         "tmp-customers",
-        "customers",
+        "rows",
       );
 
       const rows: any[] = [...allCustomers]
@@ -416,8 +415,8 @@ export default function ManageCustomersPage() {
   };
 
   const isSearchActive = searchDebounced.trim().length > 0;
-  const noActiveMatch = isSearchActive && (activeQ.data?.customers?.length ?? 0) === 0;
-  const noInactiveMatch = isSearchActive && (inactiveQ.data?.customers?.length ?? 0) === 0;
+  const noActiveMatch = isSearchActive && (activeQ.data?.rows?.length ?? 0) === 0;
+  const noInactiveMatch = isSearchActive && (inactiveQ.data?.rows?.length ?? 0) === 0;
 
   // ──────────────────────────────────────────────────────────
   // Render

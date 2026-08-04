@@ -80,7 +80,7 @@ export function AvailableStock({
         await fetchCached<Product>(
           "products",
           "/api/products?active=true",
-          "products"
+          "rows"
         )
       );
     } catch {
@@ -88,7 +88,7 @@ export function AvailableStock({
     }
     try {
       setStockData(
-        await fetchCached<ProductStock>("stock", "/api/stock", "stock")
+        await fetchCached<ProductStock>("stock", "/api/stock", "rows")
       );
       setLastStockUpdate(new Date());
     } catch {
@@ -97,7 +97,7 @@ export function AvailableStock({
     // Locations are not cached (small table, we want fresh data)
     try {
       const locData = await api.get<any>("/api/locations");
-      if (Array.isArray(locData?.locations)) setLocations(locData.locations);
+      if (Array.isArray(locData?.rows)) setLocations(locData.rows);
     } catch {
       /* non-fatal */
     }
@@ -123,7 +123,7 @@ export function AvailableStock({
       const fresh = await fetchCached<ProductStock>(
         "stock",
         "/api/stock",
-        "stock"
+        "rows"
       );
       setStockData(fresh);
       setLastStockUpdate(new Date());

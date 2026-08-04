@@ -156,7 +156,7 @@ export default function PurchasesStockPage() {
 
     // Products
     try {
-      const list = await fetchCached<Product>("products", "/api/products", "products");
+      const list = await fetchCached<Product>("products", "/api/products", "rows");
       setProducts(list);
     } catch (e: any) {
       errors.push("Products: " + (e.message || "unknown error"));
@@ -164,7 +164,7 @@ export default function PurchasesStockPage() {
 
     // Customers
     try {
-      const list = await fetchCached<Customer>("customers", "/api/customers?active=true", "customers");
+      const list = await fetchCached<Customer>("customers", "/api/customers?active=true", "rows");
       setCustomers(list);
     } catch (e: any) {
       errors.push("Customers: " + (e.message || "unknown error"));
@@ -172,7 +172,7 @@ export default function PurchasesStockPage() {
 
     // Suppliers
     try {
-      const list = await fetchCached<Supplier>("suppliers", "/api/suppliers", "suppliers");
+      const list = await fetchCached<Supplier>("suppliers", "/api/suppliers", "rows");
       setSuppliers(list);
     } catch (e: any) {
       errors.push("Suppliers: " + (e.message || "unknown error"));
@@ -180,7 +180,7 @@ export default function PurchasesStockPage() {
 
     // Stock
     try {
-      const list = await fetchCached<ProductStock>("stock", "/api/stock", "stock");
+      const list = await fetchCached<ProductStock>("stock", "/api/stock", "rows");
       setStockData(list);
     } catch (e: any) {
       errors.push("Stock: " + (e.message || "unknown error"));
@@ -191,7 +191,7 @@ export default function PurchasesStockPage() {
       const puRes = await apiFetch(`/api/purchases`);
       if (puRes.ok) {
         const puData = await puRes.json();
-        setPurchases(puData.purchases ?? []);
+        setPurchases(puData.rows ?? []);
       } else {
         const errDetail = await apiError(puRes, "Failed to fetch purchases");
         errors.push("Purchases: " + errDetail);
@@ -205,7 +205,7 @@ export default function PurchasesStockPage() {
       const locRes = await apiFetch("/api/locations");
       if (locRes.ok) {
         const locData = await locRes.json();
-        if (Array.isArray(locData.locations)) setLocations(locData.locations);
+        if (Array.isArray(locData.rows)) setLocations(locData.rows);
       }
     } catch {
       // Non-critical — bill/receipt will fall back to "Farmhouse"
@@ -356,8 +356,8 @@ export default function PurchasesStockPage() {
       });
       if (!res.ok) throw new Error(await apiError(res, "Failed to create product"));
       const data = await res.json();
-      const newProduct: Product = data.product;
-      if (!newProduct) throw new Error("Invalid response from server");
+      const newProduct: Product = data;
+      if (!newProduct?.id) throw new Error("Invalid response from server");
 
       setProducts((prev) => [...prev, newProduct]);
       // Add a new stock row to the table so the user can enter its opening stock
@@ -429,8 +429,8 @@ export default function PurchasesStockPage() {
           throw new Error(err.detail || err.error || "Failed to create supplier");
         }
         const data = await res.json();
-        supplierId = data.supplier?.id;
-        if (data.supplier) setSuppliers((prev) => [...prev, data.supplier]);
+        supplierId = data?.id;
+        if (data) setSuppliers((prev) => [...prev, data]);
       } catch (e: any) {
         toast.error(e.message || "Failed to create supplier");
         return;
@@ -523,7 +523,7 @@ export default function PurchasesStockPage() {
 
   const handleDeletePurchase = async (id: number) => {
     try {
-      const res = await apiFetch(`/api/purchases?id=${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/purchases/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(await apiError(res, "Failed to delete purchase"));
       setPurchases((prev) => prev.filter((p) => p.id !== id));
       toast.success("Purchase deleted.");
@@ -553,7 +553,7 @@ export default function PurchasesStockPage() {
       // For supplier purchases, p.suppliers may have come from the API join;
       // fall back to local suppliers list.
       const supplier = !p.settled_by_customer_id
-        ? (p.suppliers ?? suppliers.find((s) => s.id === p.supplier_id) ?? null)
+        ? (suppliers.find((s) => s.id === p.supplier_id) ?? null)
         : null;
 
       const { generatePurchaseBillPDF } = await import("@/lib/generate-purchase-bill");
@@ -594,7 +594,7 @@ export default function PurchasesStockPage() {
         ? (customers.find((c) => c.id === p.settled_by_customer_id) ?? null)
         : null;
       const supplier = !p.settled_by_customer_id
-        ? (p.suppliers ?? suppliers.find((s) => s.id === p.supplier_id) ?? null)
+        ? (suppliers.find((s) => s.id === p.supplier_id) ?? null)
         : null;
 
       const { generatePurchaseReceiptPDF } = await import("@/lib/generate-purchase-receipt");
@@ -639,10 +639,10 @@ export default function PurchasesStockPage() {
     const q = historySearchDebounced.trim().toLowerCase();
     return purchases.filter((p) => {
       const source = p.settled_by_customer_id
-        ? p.customers?.name ?? ""
-        : p.suppliers?.name ?? "";
+        ? p.customer_name ?? ""
+        : p.supplier_name ?? "";
       return [
-        p.products?.name ?? "",
+        p.product_name ?? "",
         source,
         p.purchase_date ?? "",
         p.notes ?? "",
@@ -683,10 +683,10 @@ export default function PurchasesStockPage() {
         "#": idx + 1,
         Date: p.purchase_date,
         Source: p.settled_by_customer_id
-          ? `${p.customers?.name || "—"} (Settlement)`
-          : p.suppliers?.name || "—",
+          ? `${p.customer_name || "—"} (Settlement)`
+          : p.supplier_name || "—",
         Type: p.settled_by_customer_id ? "Settlement" : "Supplier",
-        Product: p.products?.name || "—",
+        Product: p.product_name || "—",
         "Unit Type": p.unit_type === "bags" ? "Bags" : "KG (loose)",
         Quantity: p.quantity,
         "Rate (Rs.)": p.rate_per_bag,
@@ -1230,8 +1230,8 @@ export default function PurchasesStockPage() {
                       <TableBody>
                         {pagedPurchases.map((p) => {
                           const source = p.settled_by_customer_id
-                            ? p.customers?.name ?? "—"
-                            : p.suppliers?.name ?? "—";
+                            ? p.customer_name ?? "—"
+                            : p.supplier_name ?? "—";
                           const isSettlement = !!p.settled_by_customer_id;
                           const value = getPurchaseValue(p);
                           return (
@@ -1245,7 +1245,7 @@ export default function PurchasesStockPage() {
                                   </span>
                                 </div>
                               </TableCell>
-                              <TableCell className="text-sm text-slate-700">{p.products?.name ?? "—"}</TableCell>
+                              <TableCell className="text-sm text-slate-700">{p.product_name ?? "—"}</TableCell>
                               <TableCell className="text-sm text-slate-700 text-right font-mono">{getQuantityLabel(p)}</TableCell>
                               <TableCell className="text-sm text-slate-700 text-right font-mono">{fmt(p.rate_per_bag)}</TableCell>
                               <TableCell className="text-sm text-slate-900 text-right font-mono font-semibold">{fmt(value)}</TableCell>

@@ -112,7 +112,7 @@ export default function CustomerKhataPage() {
   // this to render driver info in the customer history table for mix orders.
   const mixOrdersQ = useMixOrders();
   const mixMeta: Record<number, { driver_name: string | null; driver_rent: number }> = useMemo(() => {
-    const orders: any[] = mixOrdersQ.data?.orders ?? [];
+    const orders: any[] = mixOrdersQ.data?.rows ?? [];
     const map: Record<number, { driver_name: string | null; driver_rent: number }> = {};
     for (const o of orders) {
       map[Number(o.id)] = {
@@ -149,7 +149,7 @@ export default function CustomerKhataPage() {
         const locRes = await apiFetch("/api/locations");
         if (locRes.ok) {
           const locData = await locRes.json();
-          setLocations(locData.locations ?? []);
+          setLocations(locData.rows ?? []);
         }
       } catch { /* silent */ }
     })();
@@ -201,7 +201,7 @@ export default function CustomerKhataPage() {
 
   // ── Section 1: paginated customers merged with balances ──
   const pagedCustomers: CustomerWithBalance[] = useMemo(() => {
-    const list = customersQ.data?.customers ?? [];
+    const list = customersQ.data?.rows ?? [];
     return list.map((c: any) => {
       const b = balances[c.id] ?? {
         opening_balance: c.opening_balance ?? 0,
@@ -224,7 +224,7 @@ export default function CustomerKhataPage() {
 
   // ── Section 2: selected customer detail ──
   const allActiveCustomers: Customer[] = useMemo(
-    () => (allActiveQ.data?.customers ?? []) as Customer[],
+    () => (allActiveQ.data?.rows ?? []) as Customer[],
     [allActiveQ.data],
   );
 
@@ -251,7 +251,7 @@ export default function CustomerKhataPage() {
   );
 
   const pagedSales: Sale[] = useMemo(
-    () => (salesQ.data?.sales ?? []) as Sale[],
+    () => (salesQ.data?.rows ?? []) as Sale[],
     [salesQ.data],
   );
 
@@ -293,7 +293,7 @@ export default function CustomerKhataPage() {
       const allSalesRes = await apiFetch(`/api/sales?customer_id=${selectedCustomerId}`);
       if (!allSalesRes.ok) { toast.error("Failed to fetch sales for bill"); return; }
       const allSalesJson = await allSalesRes.json();
-      const allSales: Sale[] = allSalesJson.sales ?? [];
+      const allSales: Sale[] = allSalesJson.rows ?? [];
       if (allSales.length === 0) {
         toast.error("No sales data to generate bill");
         return;
@@ -361,7 +361,7 @@ export default function CustomerKhataPage() {
         const res = await apiFetch(`/api/customers?${qs.toString()}`);
         if (!res.ok) throw new Error("Failed to fetch customers");
         const body = await res.json();
-        const rows = Array.isArray(body?.customers) ? body.customers : [];
+        const rows = Array.isArray(body?.rows) ? body.rows : [];
         all.push(...rows);
         totalPages = typeof body?.totalPages === "number" ? body.totalPages : 1;
         if (rows.length === 0) break;
@@ -440,7 +440,7 @@ export default function CustomerKhataPage() {
         const res = await apiFetch(`/api/sales?${qs.toString()}`);
         if (!res.ok) throw new Error("Failed to fetch sales");
         const body = await res.json();
-        const rows = Array.isArray(body?.sales) ? body.sales : [];
+        const rows = Array.isArray(body?.rows) ? body.rows : [];
         all.push(...rows);
         totalPages = typeof body?.totalPages === "number" ? body.totalPages : 1;
         if (rows.length === 0) break;
@@ -459,7 +459,7 @@ export default function CustomerKhataPage() {
         const moRes = await apiFetch(`/api/mix-orders`);
         if (moRes.ok) {
           const moBody = await moRes.json();
-          const orders: any[] = moBody?.orders ?? [];
+          const orders: any[] = moBody?.rows ?? [];
           for (const o of orders) {
             mixMetaForExcel[Number(o.id)] = {
               driver_name: o.driver_name ?? null,
@@ -548,7 +548,7 @@ export default function CustomerKhataPage() {
   const loadingCustomers = customersQ.isLoading && !customersQ.data;
   const loadingSales = salesQ.isLoading && !salesQ.data;
   const isSearchActive = searchDebounced.trim().length > 0;
-  const noCustomersMatch = isSearchActive && (customersQ.data?.customers?.length ?? 0) === 0;
+  const noCustomersMatch = isSearchActive && (customersQ.data?.rows?.length ?? 0) === 0;
 
   return (
     <div className="space-y-6">
@@ -1011,7 +1011,7 @@ export default function CustomerKhataPage() {
                                     <td className="px-3 py-2 text-slate-600">
                                       <span className="inline-flex items-center gap-1.5 pl-6">
                                         <span className="text-slate-300">↳</span>
-                                        {sale.products?.name ?? `Product #${sale.product_id}`}
+                                        {sale.product_name ?? `Product #${sale.product_id}`}
                                       </span>
                                     </td>
                                     <td className="px-3 py-2 text-right tabular-nums text-slate-600">
@@ -1048,7 +1048,7 @@ export default function CustomerKhataPage() {
                           <td className="px-3 py-2.5 font-bold text-slate-700 align-top">#{group.billNumber}</td>
                           <td className="px-3 py-2.5 text-slate-600 align-top">{sale.sale_date}</td>
                           <td className="px-3 py-2.5 text-slate-800">
-                            {sale.products?.name ?? `Product #${sale.product_id}`}
+                            {sale.product_name ?? `Product #${sale.product_id}`}
                           </td>
                           <td className="px-3 py-2.5 text-right tabular-nums">
                             {fmt(sale.quantity)} {unitLabel}
@@ -1174,7 +1174,7 @@ export default function CustomerKhataPage() {
                             <td className="px-3 py-2.5 text-slate-500 font-medium">{idx + 1}</td>
                             <td className="px-3 py-2.5 text-slate-600">{pur.purchase_date}</td>
                             <td className="px-3 py-2.5 text-slate-800">
-                              {pur.products?.name ?? `Product #${pur.product_id}`}
+                              {pur.product_name ?? `Product #${pur.product_id}`}
                             </td>
                             <td className="px-3 py-2.5 text-right tabular-nums">
                               {Number(pur.quantity).toLocaleString("en-PK")}

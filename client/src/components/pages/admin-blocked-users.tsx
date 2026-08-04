@@ -31,7 +31,7 @@ async function fetchCustomers(): Promise<AppCustomer[]> {
     if (json.error === "TABLE_NOT_FOUND") return [];
     throw new Error(json.error || "Failed to fetch");
   }
-  const data = json.customers;
+  const data = json.rows;
   return data.map((c: Record<string, unknown>) => ({
     id: c.id as string,
     name: c.name as string,

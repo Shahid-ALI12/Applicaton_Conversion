@@ -72,7 +72,7 @@ export default function EditCustomerPage() {
       const cusRaw = await apiFetch("/api/customers");
       if (!cusRaw.ok) { toast.error("Failed to load customers"); return; }
       const cusRes = await cusRaw.json();
-      setCustomers(cusRes.customers ?? []);
+      setCustomers(cusRes.rows ?? []);
 
       const balRaw = await apiFetch("/api/reports/customer-balance");
       if (!balRaw.ok) { toast.error("Failed to load balances"); return; }
@@ -168,11 +168,10 @@ export default function EditCustomerPage() {
     if (!selectedCustomer) return;
     setConfirmLoading(true);
     try {
-      const res = await apiFetch("/api/customers", {
+      const res = await apiFetch(`/api/customers/${selectedCustomer.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: selectedCustomer.id,
           opening_balance: newObNum,
         }),
       });
@@ -181,7 +180,7 @@ export default function EditCustomerPage() {
       }
       const data = await res.json();
       // Update local customer list so the table + dropdown reflect the new OB
-      if (data?.customer) {
+      if (data?.id) {
         setCustomers((prev) =>
           prev.map((c) => (c.id === selectedCustomer.id ? { ...c, opening_balance: newObNum } : c))
         );

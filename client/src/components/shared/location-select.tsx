@@ -47,11 +47,11 @@ export function LocationSelect({
     (async () => {
       try {
         const data = await api.get<any>("/api/locations");
-        if (mounted && Array.isArray(data?.locations)) {
-          setLocations(data.locations);
-          if (!value && data.locations.length > 0) {
-            const shop = data.locations.find((l: Location) => l.id === DEFAULT_LOCATION_ID);
-            onChange(shop ? shop.id : data.locations[0].id);
+        if (mounted && Array.isArray(data?.rows)) {
+          setLocations(data.rows);
+          if (!value && data.rows.length > 0) {
+            const shop = data.rows.find((l: Location) => l.id === DEFAULT_LOCATION_ID);
+            onChange(shop ? shop.id : data.rows[0].id);
           }
         }
       } catch (err) {

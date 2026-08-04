@@ -250,7 +250,7 @@ export default function CustomMixOrder() {
     (async () => {
       setLoading(true);
       const failed: string[] = [];
-      try { setProducts(await fetchCached<Product>("products", "/api/products?active=true", "products")); }
+      try { setProducts(await fetchCached<Product>("products", "/api/products?active=true", "rows")); }
       catch { failed.push("products"); }
       if (failed.length > 0) toast.error(`Failed to load: ${failed.join(", ")}`);
       setLoading(false);
@@ -282,11 +282,11 @@ export default function CustomMixOrder() {
 
   // Flatten paginated orders + attach sales lines from salesByMix
   const pastOrders: any[] = useMemo(() => {
-    const orders = pastQ.data?.orders ?? [];
-    const salesByMix: Record<number, any[]> = pastQ.data?.salesByMix ?? {};
+    const orders = pastQ.data?.rows ?? [];
+    const salesByMix: Record<number, any[]> = {};
     return orders.map((o: any) => ({
       ...o,
-      customer: o.customers?.name ?? "",
+      customer: o.customer_name ?? "",
       date: o.order_date ?? "",
       driverName: o.driver_name ?? "",
       driverRent: o.driver_rent ?? 0,
@@ -319,8 +319,8 @@ export default function CustomMixOrder() {
         const res = await apiFetch(`/api/mix-orders?${qs.toString()}`);
         if (!res.ok) throw new Error("Failed to fetch mix orders");
         const body = await res.json();
-        const orders: any[] = Array.isArray(body?.orders) ? body.orders : [];
-        const salesByMix: Record<string, any[]> = body?.salesByMix ?? {};
+        const orders: any[] = Array.isArray(body?.rows) ? body.rows : [];
+        const salesByMix: Record<string, any[]> = {};
         // Flatten: one row per sale line inside each mix order
         for (const o of orders) {
           const lines = salesByMix[o.id] ?? [];
@@ -329,7 +329,7 @@ export default function CustomMixOrder() {
             all.push({
               order_id: o.id,
               order_date: o.order_date,
-              customer: o.customers?.name ?? "—",
+              customer: o.customer_name ?? "—",
               target_weight_kg: o.target_weight_kg ?? "",
               cash_received: o.cash_received ?? 0,
               driver_name: o.driver_name ?? "",
@@ -344,12 +344,12 @@ export default function CustomMixOrder() {
               all.push({
                 order_id: o.id,
                 order_date: o.order_date,
-                customer: o.customers?.name ?? "—",
+                customer: o.customer_name ?? "—",
                 target_weight_kg: o.target_weight_kg ?? "",
                 cash_received: o.cash_received ?? 0,
                 driver_name: o.driver_name ?? "",
                 driver_rent: o.driver_rent ?? 0,
-                product: line.products?.name ?? "—",
+                product: line.product_name ?? "—",
                 quantity: line.quantity,
                 rate_per_kg: line.rate_per_bag,
                 line_amount: (Number(line.quantity) || 0) * (Number(line.rate_per_bag) || 0),
@@ -480,7 +480,7 @@ export default function CustomMixOrder() {
     try {
       // Find or create customer to get customer_id (same pattern as daily-entry)
       let customerId: number;
-      const existingCustomer = await fetchCached<any>("customers", "/api/customers", "customers");
+      const existingCustomer = await fetchCached<any>("customers", "/api/customers", "rows");
       const match = existingCustomer.find(
         (c: any) => c.name.toLowerCase() === store.customerName.trim().toLowerCase()
       );
@@ -1239,7 +1239,7 @@ function PastMixOrdersSection({
 
           {selectedPast && (() => {
             const billItems = (selectedPast.sales ?? []).map((s: any) => ({
-              product: s.products?.name ?? "Unknown",
+              product: s.product_name ?? "Unknown",
               weight_kg: s.quantity,
               rate_per_kg: s.rate_per_bag,
               amount: s.quantity * s.rate_per_bag,

@@ -56,7 +56,7 @@ export const queryKeys = {
 export function useCashAccounts() {
   return useQuery({
     queryKey: queryKeys.cashAccounts,
-    queryFn: () => api.get<{ accounts: CashAccount[] }>("/api/cash/accounts"),
+    queryFn: () => api.get<CashAccount[]>("/api/cash/accounts"),
     staleTime: 60_000,
   });
 }
@@ -64,7 +64,7 @@ export function useCashAccounts() {
 export function useCashBalances() {
   return useQuery({
     queryKey: queryKeys.cashBalances,
-    queryFn: () => api.get<{ balances: Record<string, number> }>("/api/cash/balances"),
+    queryFn: () => api.get<Record<string, number>>("/api/cash/balances"),
     staleTime: 5_000,
   });
 }
@@ -73,7 +73,7 @@ export function useCashTransfers(filters: Record<string, string> = {}) {
   const qs = new URLSearchParams(filters).toString();
   return useQuery({
     queryKey: queryKeys.cashTransfers(filters),
-    queryFn: () => api.get<{ transfers: CashTransfer[] }>(`/api/cash/transfer${qs ? "?" + qs : ""}`),
+    queryFn: () => api.get<{ rows: CashTransfer[]; total: number; page: number; pageSize: number; totalPages: number }>(`/api/cash/transfer${qs ? "?" + qs : ""}`),
     staleTime: 10_000,
     placeholderData: keepPreviousData,
   });
@@ -114,7 +114,7 @@ export function useCustomerBalance(customerId?: number) {
 export function useCustomers(activeOnly = false) {
   return useQuery({
     queryKey: queryKeys.customers(activeOnly),
-    queryFn: () => api.get<{ customers: any[] }>(`/api/customers${activeOnly ? "?active=true" : ""}`),
+    queryFn: () => api.get<{ rows: any[]; total: number; page: number; pageSize: number; totalPages: number }>(`/api/customers${activeOnly ? "?active=true" : ""}`),
     staleTime: 30_000,
   });
 }
@@ -135,7 +135,7 @@ export function useCustomersPaginated(
     queryKey: queryKeys.customersPaginated(params, page, pageSize),
     queryFn: () =>
       api.get<{
-        customers: any[];
+        rows: any[];
         total: number;
         page: number;
         pageSize: number;
@@ -149,7 +149,7 @@ export function useCustomersPaginated(
 export function useProducts(activeOnly = false) {
   return useQuery({
     queryKey: queryKeys.products(activeOnly),
-    queryFn: () => api.get<{ products: any[] }>(`/api/products${activeOnly ? "?active=true" : ""}`),
+    queryFn: () => api.get<{ rows: any[]; total: number; page: number; pageSize: number; totalPages: number }>(`/api/products${activeOnly ? "?active=true" : ""}`),
     staleTime: 30_000,
   });
 }
@@ -157,7 +157,7 @@ export function useProducts(activeOnly = false) {
 export function useSuppliers(activeOnly = false) {
   return useQuery({
     queryKey: queryKeys.suppliers(activeOnly),
-    queryFn: () => api.get<{ suppliers: any[] }>(`/api/suppliers${activeOnly ? "?active=true" : ""}`),
+    queryFn: () => api.get<{ rows: any[]; total: number; page: number; pageSize: number; totalPages: number }>(`/api/suppliers${activeOnly ? "?active=true" : ""}`),
     staleTime: 30_000,
   });
 }
@@ -165,7 +165,7 @@ export function useSuppliers(activeOnly = false) {
 export function useStock() {
   return useQuery({
     queryKey: queryKeys.stock,
-    queryFn: () => api.get<{ stock: any[] }>("/api/stock"),
+    queryFn: () => api.get<{ rows: any[]; total: number }>("/api/stock"),
     staleTime: 5_000,
   });
 }
@@ -174,7 +174,7 @@ export function useSales(filters: Record<string, string | number> = {}) {
   const qs = new URLSearchParams(filters as Record<string, string>).toString();
   return useQuery({
     queryKey: queryKeys.sales(filters),
-    queryFn: () => api.get<{ sales: any[] }>(`/api/sales${qs ? "?" + qs : ""}`),
+    queryFn: () => api.get<{ rows: any[]; total: number; page: number; pageSize: number; totalPages: number }>(`/api/sales${qs ? "?" + qs : ""}`),
     staleTime: 5_000,
     placeholderData: keepPreviousData,
   });
@@ -193,7 +193,7 @@ export function useSalesPaginated(
     queryKey: [...queryKeys.sales(filters), "paged", page, pageSize],
     queryFn: () =>
       api.get<{
-        sales: any[];
+        rows: any[];
         total: number;
         page: number;
         pageSize: number;
@@ -208,7 +208,7 @@ export function usePurchases(filters: Record<string, string | number> = {}) {
   const qs = new URLSearchParams(filters as Record<string, string>).toString();
   return useQuery({
     queryKey: queryKeys.purchases(filters),
-    queryFn: () => api.get<{ purchases: any[] }>(`/api/purchases${qs ? "?" + qs : ""}`),
+    queryFn: () => api.get<{ rows: any[]; total: number; page: number; pageSize: number; totalPages: number }>(`/api/purchases${qs ? "?" + qs : ""}`),
     staleTime: 5_000,
     placeholderData: keepPreviousData,
   });
@@ -218,7 +218,7 @@ export function useExpenses(filters: Record<string, string> = {}) {
   const qs = new URLSearchParams(filters).toString();
   return useQuery({
     queryKey: queryKeys.expenses(filters),
-    queryFn: () => api.get<{ expenses: any[] }>(`/api/expenses${qs ? "?" + qs : ""}`),
+    queryFn: () => api.get<{ rows: any[]; total: number; page: number; pageSize: number; totalPages: number }>(`/api/expenses${qs ? "?" + qs : ""}`),
     staleTime: 5_000,
     placeholderData: keepPreviousData,
   });
@@ -227,7 +227,7 @@ export function useExpenses(filters: Record<string, string> = {}) {
 export function useMixOrders() {
   return useQuery({
     queryKey: queryKeys.mixOrders,
-    queryFn: () => api.get<{ orders: any[]; salesByMix: Record<number, any[]> }>("/api/mix-orders"),
+    queryFn: () => api.get<{ rows: any[]; total: number; page: number; pageSize: number; totalPages: number }>("/api/mix-orders"),
     staleTime: 10_000,
     placeholderData: keepPreviousData,
   });
@@ -246,8 +246,7 @@ export function useMixOrdersPaginated(
     queryKey: queryKeys.mixOrdersPaginated(params, page, pageSize),
     queryFn: () =>
       api.get<{
-        orders: any[];
-        salesByMix: Record<number, any[]>;
+        rows: any[];
         total: number;
         page: number;
         pageSize: number;
@@ -261,7 +260,7 @@ export function useMixOrdersPaginated(
 export function useLabours(activeOnly = false) {
   return useQuery({
     queryKey: queryKeys.labours(activeOnly),
-    queryFn: () => api.get<{ labours: any[] }>(`/api/labours${activeOnly ? "?active=true" : ""}`),
+    queryFn: () => api.get<{ rows: any[]; total: number; page: number; pageSize: number; totalPages: number }>(`/api/labours${activeOnly ? "?active=true" : ""}`),
     staleTime: 60_000,
   });
 }
@@ -277,7 +276,7 @@ export function useLabourPayments(filters: Record<string, unknown> = {}) {
   const qs = params.toString();
   return useQuery({
     queryKey: queryKeys.labourPayments(filters),
-    queryFn: () => api.get<{ payments: any[] }>(`/api/labours/payments${qs ? "?" + qs : ""}`),
+    queryFn: () => api.get<any[]>(`/api/labours/payments${qs ? "?" + qs : ""}`),
     staleTime: 5_000,
     placeholderData: keepPreviousData,
   });

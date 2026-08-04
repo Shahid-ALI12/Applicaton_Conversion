@@ -163,7 +163,7 @@ export default function LabourKhataPage() {
         throw new Error(detail);
       }
       const data = await res.json();
-      const locs: Location[] = data.locations || [];
+      const locs: Location[] = data.rows || [];
       setLocations(locs);
       // Make sure the new-labour default matches a real location id.
       if (locs.length > 0 && !locs.some((l) => l.id === newLocationId)) {
@@ -217,7 +217,7 @@ export default function LabourKhataPage() {
       const res = await apiFetch(`/api/labour-payments?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch payments");
       const body = await res.json();
-      const all: Record<string, any>[] = Array.isArray(body?.payments) ? body.payments : [];
+      const all: Record<string, any>[] = Array.isArray(body) ? body : [];
       if (all.length === 0) {
         toast.error("No payments to download for the current filters");
         return;
@@ -233,7 +233,7 @@ export default function LabourKhataPage() {
           key: "labour_id",
           label: "Labour",
           fmt: (_v: any, row: any) =>
-            row.labours?.name ||
+            row.labour_name ||
             labourNameMap.get(row.labour_id) ||
             `#${row.labour_id}`,
         },
@@ -269,7 +269,7 @@ export default function LabourKhataPage() {
         throw new Error(detail);
       }
       const data = await res.json();
-      setLabours(data.labours || []);
+      setLabours(data.rows || []);
     } catch (e: any) {
       toast.error(e.message || "Failed to load labours");
     } finally {
@@ -297,7 +297,7 @@ export default function LabourKhataPage() {
         throw new Error(detail);
       }
       const data = await res.json();
-      setPayments(data.payments || []);
+      setPayments(Array.isArray(data) ? data : []);
     } catch (e: any) {
       toast.error(e.message || "Failed to load payments");
     } finally {
@@ -424,7 +424,7 @@ export default function LabourKhataPage() {
     (labour: Labour | undefined | null): string => {
       if (!labour) return "—";
       // Prefer the joined row from the API
-      if (labour.locations?.name) return labour.locations.name;
+      if (labour.location_name) return labour.location_name;
       if (labour.location_id != null) {
         return locationsById.get(labour.location_id)?.name || "—";
       }
@@ -443,7 +443,7 @@ export default function LabourKhataPage() {
     if (!paymentSearchDebounced.trim()) return payments;
     const q = paymentSearchDebounced.trim().toLowerCase();
     return payments.filter((p) => {
-      const labourName = p.labours?.name || laboursById.get(p.labour_id)?.name || "";
+      const labourName = p.labour_name || laboursById.get(p.labour_id)?.name || "";
       return [
         labourName,
         p.payment_date ?? "",
@@ -657,7 +657,7 @@ export default function LabourKhataPage() {
   const handleDeletePayment = async (id: number) => {
     if (!confirm("Delete this payment? This cannot be undone.")) return;
     try {
-      const res = await apiFetch(`/api/labour-payments?id=${id}`, {
+      const res = await apiFetch(`/api/labours/payments/${id}`, {
         method: "DELETE",
       });
       if (!res.ok) {
@@ -1507,7 +1507,7 @@ export default function LabourKhataPage() {
                   {labours.map((l) => (
                     <SelectItem key={l.id} value={String(l.id)}>
                       {l.name}
-                      {l.locations?.name ? ` · ${l.locations.name}` : ""}
+                      {l.location_name ? ` · ${l.location_name}` : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1612,7 +1612,7 @@ export default function LabourKhataPage() {
                 <tbody className="divide-y divide-slate-100">
                   {filteredPayments.map((p) => {
                     const badge = typeBadge(p.payment_type);
-                    const labour = p.labours || laboursById.get(p.labour_id);
+                    const labour = laboursById.get(p.labour_id);
                     const labourName = labour?.name || `#${p.labour_id}`;
                     const locName = labourLocationName(labour);
                     const hasLocation = locName !== "—";

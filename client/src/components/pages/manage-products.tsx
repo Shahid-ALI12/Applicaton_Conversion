@@ -56,9 +56,9 @@ export default function ManageProducts() {
   const loadData = useCallback(async () => {
     let pList: Product[] = [], sList: ProductStock[] = [];
     const failed: string[] = [];
-    try { pList = await fetchCached<Product>("products", "/api/products", "products"); }
+    try { pList = await fetchCached<Product>("products", "/api/products", "rows"); }
     catch { failed.push("products"); }
-    try { sList = await fetchCached<ProductStock>("stock", "/api/stock", "stock"); }
+    try { sList = await fetchCached<ProductStock>("stock", "/api/stock", "rows"); }
     catch { failed.push("stock"); }
     setProducts(pList);
     setStockData(sList);
@@ -100,10 +100,10 @@ export default function ManageProducts() {
 
       setUpdating((prev) => new Set(prev).add(id));
       try {
-        const res = await apiFetch("/api/products", {
+        const res = await apiFetch(`/api/products/${id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, default_rate: rateValue }),
+          body: JSON.stringify({ default_rate: rateValue }),
         });
         if (!res.ok) throw new Error(await apiError(res, "Failed to update rate"));
         setProducts((prev) =>
@@ -153,8 +153,8 @@ export default function ManageProducts() {
       });
       if (!res.ok) throw new Error(await apiError(res, "Failed to create product"));
       const data = await res.json();
-      const newProduct = data.product;
-      if (!newProduct) throw new Error("Invalid response from server");
+      const newProduct = data;
+      if (!newProduct?.id) throw new Error("Invalid response from server");
       setProducts((prev) => [...prev, newProduct]);
       setEditedRates((prev) => ({ ...prev, [newProduct.id]: String(rateValue) }));
       setNewName("");
@@ -190,8 +190,8 @@ export default function ManageProducts() {
     try {
       const isPermanent = confirmMode === "permanent";
       const url = isPermanent
-        ? `/api/products?id=${confirmProduct.id}&permanent=true`
-        : `/api/products?id=${confirmProduct.id}`;
+        ? `/api/products/${confirmProduct.id}/permanent`
+        : `/api/products/${confirmProduct.id}`;
       const res = await apiFetch(url, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -242,7 +242,7 @@ export default function ManageProducts() {
 
   const handleRestore = useCallback(async (product: Product) => {
     try {
-      const res = await apiFetch(`/api/products?id=${product.id}&restore=true`, { method: "DELETE" });
+      const res = await apiFetch(`/api/products/${product.id}/restore`, { method: "PUT" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || err.error || "Failed to restore product");
