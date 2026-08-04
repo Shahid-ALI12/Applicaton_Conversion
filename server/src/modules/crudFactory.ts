@@ -9,6 +9,19 @@ import { cacheInvalidate } from '../utils/cache.js';
 
 type Binding = string | number | bigint | Buffer | null;
 
+/** Convert booleans to 0/1 for SQLite, leave everything else as-is */
+function sqliteSafe(val: unknown): Binding {
+  if (typeof val === 'boolean') return val ? 1 : 0;
+  if (val === undefined) return null;
+  return val as Binding;
+}
+
+function sqliteSafeRow(obj: Record<string, unknown>): { cols: string[]; vals: Binding[] } {
+  const cols = Object.keys(obj);
+  const vals = cols.map(k => sqliteSafe(obj[k]));
+  return { cols, vals };
+}
+
 interface CrudConfig {
   table: string;
   listFields?: string;
@@ -56,8 +69,7 @@ export function createCrudRouter(config: CrudConfig): Router {
   });
 
   router.post('/', requireAuth, validateBody(createSchema), (req, res) => {
-    const cols = Object.keys(req.body as Record<string, unknown>);
-    const vals = Object.values(req.body as Record<string, unknown>);
+    const { cols, vals } = sqliteSafeRow(req.body as Record<string, unknown>);
     const placeholders = cols.map(() => '?').join(', ');
     const result = db.prepare(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders})`).run(...vals);
     if (config.afterCreate) config.afterCreate(Number(result.lastInsertRowid), req.body as Record<string, unknown>);
@@ -70,8 +82,7 @@ export function createCrudRouter(config: CrudConfig): Router {
     const id = Number(req.params.id);
     const existing = db.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(id);
     if (!existing) throw AppError.notFound();
-    const cols = Object.keys(req.body as Record<string, unknown>);
-    const vals = Object.values(req.body as Record<string, unknown>);
+    const { cols, vals } = sqliteSafeRow(req.body as Record<string, unknown>);
     const sets = cols.map(c => `${c} = ?`).join(', ');
     db.prepare(`UPDATE ${table} SET ${sets} WHERE id = ?`).run(...vals, id);
     if (config.afterUpdate) config.afterUpdate(id, req.body as Record<string, unknown>);

@@ -115,7 +115,7 @@ export function createApp() {
   // Serve static client in production
   if (config.isProd) {
     app.use(expressStatic(config.clientDist));
-    app.get('*', (_req, res) => {
+    app.get('/{*splat}', (_req, res) => {
       res.sendFile(path.join(config.clientDist, 'index.html'));
     });
   }

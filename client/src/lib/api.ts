@@ -65,3 +65,18 @@ export interface PageResult<T> {
   pageSize: number;
   totalPages: number;
 }
+
+/**
+ * Auth-aware fetch wrapper for cases where the caller needs the raw Response
+ * (e.g., to check status manually, read body as text, etc.).
+ * Automatically adds the Bearer token header and Content-Type for JSON bodies.
+ */
+export function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  const token = getToken();
+  const headers = new Headers(init?.headers);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (init?.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  return fetch(url, { ...init, headers });
+}
