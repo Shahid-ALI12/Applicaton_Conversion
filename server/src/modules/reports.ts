@@ -82,8 +82,8 @@ reportsRouter.get('/dashboard/details', requireAuth, (req, res) => {
       const params = search ? [date, `%${search}%`] : [date];
       total = ((db.prepare(`SELECT COUNT(*) as c FROM sales s JOIN customers c ON c.id = s.customer_id WHERE ${where}`).get(...params) as { c: number }).c);
       rows = db.prepare(`
-        SELECT c.name as customer, p.name as product, s.quantity as qty, s.unit,
-               s.rate_per_bag as rate, s.driver_rent as fare, s.quantity * s.rate_per_bag as amount
+        SELECT c.name as customer, p.name as product, s.quantity as qty, s.unit_type as unit,
+               s.rate_per_bag as rate, s.rickshaw_fare as fare, s.quantity * s.rate_per_bag as amount
         FROM sales s
         JOIN customers c ON c.id = s.customer_id
         JOIN products p ON p.id = s.product_id
@@ -99,7 +99,7 @@ reportsRouter.get('/dashboard/details', requireAuth, (req, res) => {
       const params = search ? [date, `%${search}%`] : [date];
       total = ((db.prepare(`SELECT COUNT(*) as c FROM sales s JOIN customers c ON c.id = s.customer_id WHERE ${where}`).get(...params) as { c: number }).c);
       rows = db.prepare(`
-        SELECT c.name as customer, p.name as product, s.quantity as qty, s.unit,
+        SELECT c.name as customer, p.name as product, s.quantity as qty, s.unit_type as unit,
                s.quantity * s.rate_per_bag as bill, s.cash_received as cash_paid,
                (s.quantity * s.rate_per_bag - s.cash_received) as balance
         FROM sales s

@@ -253,7 +253,8 @@ export default function DayReconciliation() {
         if (d.label) setDetailLabel(d.label);
       } else {
         const err = await res.json().catch(() => ({}));
-        setDetailError(err?.detail || err?.error || "Failed to load records");
+        const errMsg = typeof err?.error === 'string' ? err.error : err?.error?.message || err?.detail || "Failed to load records";
+        setDetailError(errMsg);
       }
     } catch {
       setDetailRows([]);
@@ -293,7 +294,8 @@ export default function DayReconciliation() {
           if (d.label) setDetailLabel(d.label);
         } else {
           const err = await res.json().catch(() => ({}));
-          setDetailError(err?.detail || err?.error || "Failed to load records");
+          const errMsg = typeof err?.error === 'string' ? err.error : err?.error?.message || err?.detail || "Failed to load records";
+          setDetailError(errMsg);
           setDetailRows([]);
         }
       } catch {

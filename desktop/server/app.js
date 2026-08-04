@@ -19,6 +19,7 @@ import { reportsRouter } from './modules/reports.js';
 import { settingsRouter } from './modules/settings.js';
 import { backupsRouter } from './modules/backups.js';
 import { createCrudRouter } from './modules/crudFactory.js';
+import { stockRouter } from './modules/stock.js';
 import { z } from 'zod';
 import expressStatic from 'serve-static';
 import path from 'node:path';
@@ -75,15 +76,8 @@ export function createApp() {
         updateSchema: z.object({ name: z.string().trim().min(1).optional() }),
         orderBy: 'name ASC',
     }));
-    // Stock
-    app.use('/api/stock', createCrudRouter({
-        table: 'product_stock',
-        listFields: 'ps.id, ps.product_id, p.name as product_name, ps.location_id, l.name as location_name, ps.stock_quantity, ps.last_bag_weight_kg',
-        searchFields: ['p.name'],
-        createSchema: z.object({ product_id: z.number().int().positive(), location_id: z.number().int().positive(), stock_quantity: z.number().default(0) }),
-        updateSchema: z.object({ stock_quantity: z.number().optional(), last_bag_weight_kg: z.number().nullable().optional() }),
-        orderBy: 'p.name ASC',
-    }));
+    // Stock (custom router with JOINs — CRUD factory can't handle table aliases)
+    app.use('/api/stock', stockRouter);
     // Business modules
     app.use('/api/sales', salesRouter);
     app.use('/api/purchases', purchasesRouter);
