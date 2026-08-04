@@ -1,0 +1,24 @@
+{
+  "name": "danish-cattle-feed-software",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Danish Cattle Feed Software — Daily Register & Sales Management (Desktop)",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev --workspace server\" \"npm:dev --workspace client\"",
+    "build": "npm run build --workspace server && npm run build --workspace client",
+    "start": "npm run start --workspace server",
+    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace client",
+    "desktop:prepare": "npm run build && node scripts/prepare-desktop.mjs",
+    "desktop:dist": "npm run desktop:prepare && cd desktop && npm run dist"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

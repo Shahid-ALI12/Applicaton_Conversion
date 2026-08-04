@@ -1,0 +1,28 @@
+appId: com.danishcattlefeed.software
+productName: Danish Cattle Feed Software
+copyright: © 2026 Danish Cattle Feed
+
+directories:
+  output: release
+
+asar: false
+
+files:
+  - main.js
+  - package.json
+  - server/**/*
+  - client/**/*
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Danish Cattle Feed Software
