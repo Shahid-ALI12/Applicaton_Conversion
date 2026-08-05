@@ -3,11 +3,17 @@ import { createHmac, createPublicKey, createHash, randomUUID, verify as edVerify
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
+import { db } from '../db/connection.js';
 import { logger } from '../logger.js';
 /**
  * Monthly licensing (offline activation) — Ed25519.
- * Seller ka keygen tool se `machineId|expiry` sign hota hai;
- * app sirf PUBLIC key se verify karti hai.
+ *
+ * Seller ka keygen tool se JSON payload sign hota hai:
+ *   { m: machineId, n: customerName, p: bcryptHash, e: expiry }
+ *
+ * App sirf PUBLIC key se verify karti hai. Activation pe admin
+ * user ka naam + password bhi update ho jaata hai (taake har
+ * machine ka apna login ho).
  */
 const LICENSE_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAe4U4edW/v7sV2xiDKhTP6mcn+G01RHOrBhgtCMM9e1E=
@@ -38,7 +44,7 @@ export const machineId = `${machineHash.slice(0, 4)}-${machineHash.slice(4, 8)}`
 const sealKey = createHash('sha256').update(`dcf-license-seal:${machineHash}`).digest();
 function sealOf(state) {
     return createHmac('sha256', sealKey)
-        .update(`${state.expiry}|${state.trial ? 1 : 0}|${state.last_seen}`)
+        .update(`${state.expiry}|${state.trial ? 1 : 0}|${state.last_seen}|${state.customer_name ?? ''}`)
         .digest('hex');
 }
 function writeState(state) {
@@ -50,6 +56,9 @@ function readState() {
         return 'missing';
     try {
         const stored = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+        // Backward-compat: purane state files mein customer_name nahi tha
+        if (stored.customer_name === undefined)
+            stored.customer_name = null;
         const { hmac, ...rest } = stored;
         if (sealOf(rest) !== hmac)
             return 'tampered';
@@ -82,14 +91,14 @@ function computeStatus() {
     let state = readState();
     if (state === 'missing') {
         const expiry = new Date(now.getTime() + TRIAL_DAYS * 86_400_000).toISOString().slice(0, 10);
-        writeState({ expiry, trial: true, last_seen: now.toISOString() });
+        writeState({ expiry, trial: true, last_seen: now.toISOString(), customer_name: null });
         state = readState();
         logger.info({ expiry }, 'License: fresh install — trial started');
     }
     if (state === 'tampered') {
         return {
             state: 'tampered', machine_id: machineId, licensed_until: null,
-            days_left: 0, trial: false,
+            days_left: 0, trial: false, customer_name: null,
             message: 'License file kharab ya tabdeel hui hai — naya activation code darkar hai.',
         };
     }
@@ -97,18 +106,18 @@ function computeStatus() {
     if (now.getTime() < lastSeen - CLOCK_TOLERANCE_MS) {
         return {
             state: 'tampered', machine_id: machineId, licensed_until: state.expiry,
-            days_left: 0, trial: state.trial,
+            days_left: 0, trial: state.trial, customer_name: state.customer_name,
             message: 'System ki date/time peeche ki gayi hai — sahi karein ya naya code lein.',
         };
     }
     if (now.getTime() - lastSeen > HEARTBEAT_EVERY_MS) {
-        writeState({ expiry: state.expiry, trial: state.trial, last_seen: now.toISOString() });
+        writeState({ expiry: state.expiry, trial: state.trial, last_seen: now.toISOString(), customer_name: state.customer_name });
     }
     const daysLeft = daysBetween(now, state.expiry);
     if (daysLeft <= 0) {
         return {
             state: 'expired', machine_id: machineId, licensed_until: state.expiry,
-            days_left: 0, trial: state.trial,
+            days_left: 0, trial: state.trial, customer_name: state.customer_name,
             message: state.trial ? 'Trial khatam ho gaya — activation code lein.' : 'License muddat khatam — naya code lein.',
         };
     }
@@ -118,6 +127,7 @@ function computeStatus() {
         licensed_until: state.expiry,
         days_left: daysLeft,
         trial: state.trial,
+        customer_name: state.customer_name,
         message: daysLeft <= EXPIRY_WARN_DAYS
             ? `License ${daysLeft} din mein khatam — waqt par naya code le lein.`
             : state.trial ? `Trial chal raha hai — ${daysLeft} din baqi.` : 'License active hai.',
@@ -140,30 +150,60 @@ export function activateLicense(code) {
     const parts = code.trim().split('.');
     if (parts.length !== 2)
         throw new LicenseError('Code ka format ghalat hai — poora code paste karein.');
-    let payload;
+    const payloadB64 = parts[0];
+    const sigB64 = parts[1];
+    let payloadJson;
     let signature;
     try {
-        payload = Buffer.from(parts[0], 'base64url').toString('utf8');
-        signature = Buffer.from(parts[1], 'base64url');
+        payloadJson = Buffer.from(payloadB64, 'base64url').toString('utf8');
+        signature = Buffer.from(sigB64, 'base64url');
     }
     catch {
         throw new LicenseError('Code parh nahi saka — dobara copy/paste karein.');
     }
-    const valid = edVerify(null, Buffer.from(payload, 'utf8'), publicKey, signature);
+    // Ed25519 signature verify (proves seller ne sign kiya)
+    const valid = edVerify(null, Buffer.from(payloadJson, 'utf8'), publicKey, signature);
     if (!valid)
         throw new LicenseError('Code ghalat hai (signature match nahi karti).');
-    const [codeMachine, expiry] = payload.split('|');
-    if (codeMachine !== machineId) {
-        throw new LicenseError(`Ye code kisi aur machine (${codeMachine}) ka hai — is PC ka Machine ID ${machineId} batayen.`);
+    let payload;
+    try {
+        payload = JSON.parse(payloadJson);
     }
-    if (!expiry || !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
+    catch {
+        throw new LicenseError('Code ka content ghalat hai.');
+    }
+    if (!payload.m || !/^[0-9A-F]{4}-[0-9A-F]{4}$/.test(payload.m)) {
+        throw new LicenseError('Code mein Machine ID ghalat hai.');
+    }
+    if (payload.m !== machineId) {
+        throw new LicenseError(`Ye code kisi aur machine (${payload.m}) ka hai — is PC ka Machine ID ${machineId} batayen.`);
+    }
+    if (!payload.e || !/^\d{4}-\d{2}-\d{2}$/.test(payload.e)) {
         throw new LicenseError('Code mein date ghalat hai.');
     }
-    if (daysBetween(new Date(), expiry) <= 0) {
+    if (daysBetween(new Date(), payload.e) <= 0) {
         throw new LicenseError('Ye code purana hai (muddat guzar chuki) — naya code lein.');
     }
-    writeState({ expiry, trial: false, last_seen: new Date().toISOString() });
-    logger.info({ expiry, machineId }, 'License activated');
+    if (!payload.n || !payload.n.trim()) {
+        throw new LicenseError('Code mein customer name nahi hai — keygen update karein.');
+    }
+    if (!payload.p || !payload.p.startsWith('$2')) {
+        throw new LicenseError('Code mein password hash ghalat hai.');
+    }
+    // Upsert admin user (username hamesha 'admin', naam + password key se aate hain)
+    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
+    if (!existing) {
+        db.prepare('INSERT INTO users (name, username, password_hash, role) VALUES (?, ?, ?, ?)')
+            .run(payload.n.trim(), 'admin', payload.p, 'admin');
+        logger.info({ name: payload.n, machineId }, 'License: admin user created from activation');
+    }
+    else {
+        db.prepare('UPDATE users SET name = ?, password_hash = ? WHERE username = ?')
+            .run(payload.n.trim(), payload.p, 'admin');
+        logger.info({ name: payload.n, machineId }, 'License: admin user updated from activation');
+    }
+    writeState({ expiry: payload.e, trial: false, last_seen: new Date().toISOString(), customer_name: payload.n.trim() });
+    logger.info({ expiry: payload.e, machineId, customer: payload.n }, 'License activated');
     return licenseStatus(true);
 }
 export class LicenseError extends Error {

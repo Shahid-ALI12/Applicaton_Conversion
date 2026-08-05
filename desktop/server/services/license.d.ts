@@ -6,6 +6,7 @@ export interface LicenseStatus {
     days_left: number;
     trial: boolean;
     message: string;
+    customer_name: string | null;
 }
 export declare const machineId: string;
 export declare function licenseStatus(force?: boolean): LicenseStatus;

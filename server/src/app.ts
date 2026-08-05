@@ -6,7 +6,6 @@ import { licenseGate } from './middleware/licenseGate.js';
 import { apiLimiter } from './middleware/rateLimit.js';
 import { errorHandler } from './middleware/error.js';
 import { authRouter } from './modules/auth.js';
-import { usersRouter } from './modules/users.js';
 import { licenseRouter } from './modules/license.js';
 import { salesRouter } from './modules/sales.js';
 import { purchasesRouter } from './modules/purchases.js';
@@ -47,9 +46,6 @@ export function createApp() {
 
   // License
   app.use('/api/license', licenseRouter);
-
-  // Users
-  app.use('/api/users', usersRouter);
 
   // Products (custom router with soft-delete)
   app.use('/api/products', productsRouter);

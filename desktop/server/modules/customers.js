@@ -100,7 +100,7 @@ customersRouter.put('/:id', requireAuth, validateBody(updateCustomerSchema), (re
     const row = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
     res.json(row);
 });
-// DELETE (soft)
+// DELETE (soft — set deleted_at)
 customersRouter.delete('/:id', requireAuth, (req, res) => {
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT id FROM customers WHERE id = ?').get(id);
@@ -109,5 +109,25 @@ customersRouter.delete('/:id', requireAuth, (req, res) => {
     db.prepare("UPDATE customers SET deleted_at = datetime('now') WHERE id = ?").run(id);
     cacheInvalidate('customers');
     res.json({ ok: true, id, deleted: true });
+});
+// PUT /:id/restore — restore soft-deleted customer
+customersRouter.put('/:id/restore', requireAuth, (req, res) => {
+    const id = Number(req.params.id);
+    const existing = db.prepare('SELECT id FROM customers WHERE id = ?').get(id);
+    if (!existing)
+        throw AppError.notFound('Customer');
+    db.prepare('UPDATE customers SET deleted_at = NULL WHERE id = ?').run(id);
+    cacheInvalidate('customers');
+    const row = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+    res.json(row);
+});
+// DELETE /:id/permanent — hard delete
+customersRouter.delete('/:id/permanent', requireAuth, (req, res) => {
+    const id = Number(req.params.id);
+    const result = db.prepare('DELETE FROM customers WHERE id = ?').run(id);
+    if (result.changes === 0)
+        throw AppError.notFound('Customer');
+    cacheInvalidate('customers');
+    res.json({ ok: true });
 });
 //# sourceMappingURL=customers.js.map

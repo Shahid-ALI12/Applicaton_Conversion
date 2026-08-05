@@ -62,4 +62,15 @@ customerPaymentsRouter.post('/', requireAuth, validateBody(z.object({
     cacheInvalidate('cash_ledger');
     res.status(201).json(result);
 });
+// DELETE /:id
+customerPaymentsRouter.delete('/:id', requireAuth, (req, res) => {
+    const id = Number(req.params.id);
+    const existing = db.prepare('SELECT id FROM customer_payments WHERE id = ?').get(id);
+    if (!existing)
+        throw new Error('Customer payment not found');
+    db.prepare('DELETE FROM customer_payments WHERE id = ?').run(id);
+    cacheInvalidate('customer_payments');
+    cacheInvalidate('cash_ledger');
+    res.json({ ok: true });
+});
 //# sourceMappingURL=customerPayments.js.map

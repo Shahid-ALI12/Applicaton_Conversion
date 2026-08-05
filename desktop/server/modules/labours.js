@@ -88,6 +88,16 @@ laboursRouter.post('/payments', requireAuth, validateBody(z.object({
     cacheInvalidate('cash_ledger');
     res.status(201).json({ id: Number(r.lastInsertRowid) });
 });
+// DELETE /payments/:id — delete a labour payment
+laboursRouter.delete('/payments/:id', requireAuth, (req, res) => {
+    const id = Number(req.params.id);
+    const existing = db.prepare('SELECT id FROM labour_payments WHERE id = ?').get(id);
+    if (!existing)
+        throw new Error('Labour payment not found');
+    db.prepare('DELETE FROM labour_payments WHERE id = ?').run(id);
+    cacheInvalidate('cash_ledger');
+    res.json({ ok: true });
+});
 // Daily wages
 laboursRouter.get('/daily-wages', requireAuth, (req, res) => {
     const labourId = req.query.labourId ? Number(req.query.labourId) : undefined;
