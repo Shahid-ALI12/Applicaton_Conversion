@@ -14,6 +14,7 @@ import {
   LogOut,
   User,
   Wrench,
+  Info,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -21,6 +22,7 @@ const navSections = [
   {
     label: "Overview",
     items: [
+      { id: "about", label: "About", icon: Info },
       { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     ],
   },

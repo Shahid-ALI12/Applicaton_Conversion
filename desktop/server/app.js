@@ -7,6 +7,7 @@ import { apiLimiter } from './middleware/rateLimit.js';
 import { errorHandler } from './middleware/error.js';
 import { authRouter } from './modules/auth.js';
 import { licenseRouter } from './modules/license.js';
+import { aboutRouter } from './modules/about.js';
 import { salesRouter } from './modules/sales.js';
 import { purchasesRouter } from './modules/purchases.js';
 import { expensesRouter } from './modules/expenses.js';
@@ -39,6 +40,8 @@ export function createApp() {
     app.use('/api/auth', authRouter);
     // License
     app.use('/api/license', licenseRouter);
+    // About (subscription info — first page after login)
+    app.use('/api/about', aboutRouter);
     // Products (custom router with soft-delete)
     app.use('/api/products', productsRouter);
     // Customers (custom router with soft-delete)

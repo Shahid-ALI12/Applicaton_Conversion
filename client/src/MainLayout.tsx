@@ -1,5 +1,6 @@
 import { useAppStore } from "./store";
 import AppSidebar from "./components/layout/sidebar";
+import About from "./components/pages/about";
 import Dashboard from "./components/pages/dashboard";
 import DailyEntry from "./components/pages/daily-entry";
 import CustomMixOrder from "./components/pages/custom-mix-order";
@@ -15,6 +16,7 @@ import DatabaseManagement from "./components/pages/database-management";
 import { Toaster } from "./components/ui/sonner";
 
 const pageMap: Record<string, React.ComponentType> = {
+  about: About,
   dashboard: Dashboard,
   "daily-entry": DailyEntry,
   "custom-mix": CustomMixOrder,
@@ -31,7 +33,7 @@ const pageMap: Record<string, React.ComponentType> = {
 
 export default function MainLayout() {
   const { activePage } = useAppStore();
-  const PageComponent = pageMap[activePage] || Dashboard;
+  const PageComponent = pageMap[activePage] || About;
 
   return (
     <div className="min-h-screen bg-slate-50">

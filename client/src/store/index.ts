@@ -81,7 +81,7 @@ interface AppStore {
 }
 
 export const useAppStore = create<AppStore>((set) => ({
-  activePage: "dashboard",
+  activePage: "about",
   setActivePage: (page) => set({ activePage: page }),
 }));
 
