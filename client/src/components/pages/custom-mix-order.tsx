@@ -494,7 +494,9 @@ export default function CustomMixOrder() {
         });
         if (!custRes.ok) throw new Error(await apiError(custRes, "Failed to create customer"));
         const custData = await custRes.json();
-        customerId = custData.customer?.id;
+        // Applicaton_Conversion backend returns the row directly: { id, name, ... }
+        // (Testing_Project wraps it as { customer: {...} } — accept both for safety)
+        customerId = custData?.id ?? custData?.customer?.id;
         if (!customerId) throw new Error("Customer creation returned no ID");
         invalidateCache("customers");
       }
