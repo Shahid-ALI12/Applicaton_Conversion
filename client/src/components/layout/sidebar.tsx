@@ -12,9 +12,8 @@ import {
   FlaskConical,
   Landmark,
   LogOut,
-  Shield,
-  Users,
-  ShieldOff,
+  User,
+  Wrench,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -48,10 +47,9 @@ const navSections = [
     ],
   },
   {
-    label: "User Management",
+    label: "System",
     items: [
-      { id: "admin-customers", label: "Customer Accounts", icon: Users },
-      { id: "admin-blocked", label: "Blocked Users", icon: ShieldOff },
+      { id: "database-management", label: "Database Management", icon: Wrench },
     ],
   },
 ];
@@ -143,18 +141,20 @@ export default function AppSidebar() {
             ))}
           </nav>
 
-          {/* Footer - User Info + Logout */}
+          {/* Footer - Logged-in User Info + Logout */}
           <div className="mt-8 pt-4 border-t border-white/[0.08] space-y-3">
-            {/* Admin user card */}
+            {/* User card — actual logged-in user ka naam */}
             <div className="flex items-center gap-3 px-2">
               <div className="w-8 h-8 min-w-[2rem] rounded-lg bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center">
-                <Shield className="w-4 h-4 text-emerald-400" />
+                <User className="w-4 h-4 text-emerald-400" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-white text-xs font-semibold truncate">
-                  {authLoading ? "Loading..." : user?.name || "Admin"}
+                  {authLoading ? "Loading..." : user?.name || "Not signed in"}
                 </div>
-                <div className="text-slate-500 text-[0.65rem]">Administrator</div>
+                <div className="text-slate-500 text-[0.65rem]">
+                  {user?.role === "admin" ? "Administrator" : "Operator"}
+                </div>
               </div>
             </div>
 

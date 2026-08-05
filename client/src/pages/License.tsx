@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, setToken } from '../lib/api';
 
 export interface LicenseStatus {
   state: 'trial' | 'active' | 'expiring' | 'expired' | 'tampered';
@@ -9,6 +9,7 @@ export interface LicenseStatus {
   days_left: number;
   trial: boolean;
   message: string;
+  customer_name: string | null;
   support_phone?: string;
 }
 
@@ -33,7 +34,10 @@ export function LicensePage(): ReactNode {
     try {
       await api.post<LicenseStatus>('/api/license/activate', { code: code.trim() });
       await queryClient.invalidateQueries({ queryKey: ['license-status'] });
-      window.location.assign('/');
+      // Token clear karo taake user fresh login kare — naya key check karke
+      // dobara login hone tak software access na ho
+      setToken(null);
+      window.location.assign('/login');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Activation fail hui');
     } finally {
@@ -64,6 +68,7 @@ export function LicensePage(): ReactNode {
               {status.state === 'expired' ? 'License Khatam' : status.state === 'tampered' ? 'License Kharab / Tampered' : status.trial ? `Trial — ${status.days_left} din baqi` : `Active — ${status.days_left} din baqi`}
             </div>
             <div style={{ fontSize: 14 }}>{status.message}</div>
+            {status.customer_name && <div style={{ fontSize: 13, marginTop: 4 }}>Licensed to: <b>{status.customer_name}</b></div>}
             {status.licensed_until && <div style={{ fontSize: 13, marginTop: 4 }}>Valid till: {status.licensed_until}</div>}
           </div>
         ) : <div style={{ textAlign: 'center', marginBottom: 16 }}>Loading...</div>}

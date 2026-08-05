@@ -1,0 +1,10 @@
+{
+  "name": "dcf-license-keygen",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Danish Cattle Feed Software — License Keygen (Seller-Only Tool)",
+  "dependencies": {
+    "bcryptjs": "^2.4.3"
+  }
+}

@@ -7,3 +7,8 @@ data/
 release/
 .env
 .DS_Store
+
+# License keygen — seller-only secrets
+tools/license-keygen/keys/
+tools/license-keygen/codes.log
+tools/license-keygen/node_modules/
