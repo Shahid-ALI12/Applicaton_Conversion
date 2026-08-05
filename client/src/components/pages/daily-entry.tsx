@@ -2,7 +2,7 @@ import { apiFetch } from "@/lib/api";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import { useCartStore, fetchCached, invalidateCache, apiError } from "@/store";
+import { useCartStore, fetchCached, invalidateCache, apiError, extractApiError } from "@/store";
 import { PageHeader } from "@/components/shared/page-header";
 import { QuickNav } from "@/components/shared/quick-nav";
 import type { CartItem, Sale, Expense, Product, Customer, ProductStock, Location, CustomerPayment } from "@/types";
@@ -535,7 +535,7 @@ export default function DailyEntryPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || err.error || "Failed to complete sale");
+        throw new Error(extractApiError(err, "Failed to complete sale"));
       }
       const saleResp = await res.json().catch(() => ({}));
       const advanceConsumed = Number(saleResp?.advance_consumed ?? appliedAdvance);
@@ -636,7 +636,7 @@ export default function DailyEntryPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || err.error || "Failed to add expense");
+        throw new Error(extractApiError(err, "Failed to add expense"));
       }
       setExpenseDesc("");
       setExpenseAmount("");
@@ -707,7 +707,7 @@ export default function DailyEntryPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || err.error || "Failed to save payment");
+        throw new Error(extractApiError(err, "Failed to save payment"));
       }
       const data = await res.json().catch(() => ({}));
       const newId = data?.id;

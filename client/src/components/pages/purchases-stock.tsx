@@ -2,7 +2,7 @@ import { apiFetch } from "@/lib/api";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { fetchCached, invalidateCache, apiError } from "@/store";
+import { fetchCached, invalidateCache, apiError, extractApiError } from "@/store";
 import { PageHeader } from "@/components/shared/page-header";
 import { QuickNav } from "@/components/shared/quick-nav";
 import type { Product, Customer, Purchase, Supplier, ProductStock, Location } from "@/types";
@@ -319,7 +319,7 @@ export default function PurchasesStockPage() {
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || err.error || "Failed to update stock");
+          throw new Error(extractApiError(err, "Failed to update stock"));
         }
         savedRows.push({ name: row.productName, bags: row.totalKg > 0 ? Math.round(row.bags * 100) / 100 : 0 });
       }
@@ -426,7 +426,7 @@ export default function PurchasesStockPage() {
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || err.error || "Failed to create supplier");
+          throw new Error(extractApiError(err, "Failed to create supplier"));
         }
         const data = await res.json();
         supplierId = data?.id;
@@ -458,7 +458,7 @@ export default function PurchasesStockPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || err.error || "Failed to record purchase");
+        throw new Error(extractApiError(err, "Failed to record purchase"));
       }
       resetForm();
       invalidateCache("stock");
@@ -509,7 +509,7 @@ export default function PurchasesStockPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || err.error || "Failed to record settlement");
+        throw new Error(extractApiError(err, "Failed to record settlement"));
       }
       resetForm();
       toast.success("Settlement recorded successfully!");

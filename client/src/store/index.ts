@@ -4,13 +4,37 @@ import { pktToday } from "@/lib/pkt-date";
 import { api } from "@/lib/api";
 
 // ─── Shared API error helper ───
+// Backend returns errors in TWO possible shapes:
+//   1) { error: "string message" }              (older / Next.js-style routes)
+//   2) { error: { code, message, fields? } }    (Applicaton_Conversion Express backend)
+// Also accept { detail: "..." } and { message: "..." } for robustness.
+// Always returns a STRING — never an object — so `throw new Error(await apiError(...))`
+// never produces "[object Object]".
 export async function apiError(res: Response, fallback: string): Promise<string> {
   try {
-    const json = await res.json();
-    return (json.detail || json.error || fallback);
+    const json: any = await res.json();
+    return extractApiError(json, fallback);
   } catch {
     return fallback;
   }
+}
+
+// Synchronous variant: extract a human-readable error message from an
+// already-parsed JSON body. Use this when the caller has already consumed
+// `res.json()` and holds the raw object.
+export function extractApiError(obj: any, fallback: string): string {
+  if (!obj) return fallback;
+  // Shape 2: { error: { message } }
+  if (obj.error && typeof obj.error === 'object') {
+    if (typeof obj.error.message === 'string' && obj.error.message) return obj.error.message;
+  }
+  // Shape 1: { error: "string" }
+  if (typeof obj.error === 'string' && obj.error) return obj.error;
+  // { detail: "..." }
+  if (typeof obj.detail === 'string' && obj.detail) return obj.detail;
+  // { message: "..." }
+  if (typeof obj.message === 'string' && obj.message) return obj.message;
+  return fallback;
 }
 
 interface CartStore {

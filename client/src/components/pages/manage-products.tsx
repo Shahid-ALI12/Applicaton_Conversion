@@ -32,7 +32,7 @@ import {
   Download,
 } from "lucide-react";
 import { toast } from "sonner";
-import { fetchCached, invalidateCache, apiError } from "@/store";
+import { fetchCached, invalidateCache, apiError, extractApiError } from "@/store";
 
 export default function ManageProducts() {
   const [loading, setLoading] = useState(true);
@@ -195,7 +195,7 @@ export default function ManageProducts() {
       const res = await apiFetch(url, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || err.error || "Failed to delete product");
+        throw new Error(extractApiError(err, "Failed to delete product"));
       }
       const data = await res.json();
       invalidateCache("products");
@@ -245,7 +245,7 @@ export default function ManageProducts() {
       const res = await apiFetch(`/api/products/${product.id}/restore`, { method: "PUT" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || err.error || "Failed to restore product");
+        throw new Error(extractApiError(err, "Failed to restore product"));
       }
       setProducts((prev) =>
         prev.map((p) => (p.id === product.id ? { ...p, is_active: true } : p))

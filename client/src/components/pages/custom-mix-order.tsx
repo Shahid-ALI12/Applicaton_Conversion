@@ -17,7 +17,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useMixStore, fetchCached, invalidateCache, apiError } from "@/store";
+import { useMixStore, fetchCached, invalidateCache, apiError, extractApiError } from "@/store";
 import { PageHeader, MetricCard } from "@/components/shared/page-header";
 import { QuickNav } from "@/components/shared/quick-nav";
 import type { MixIngredient, Product } from "@/types";
@@ -520,7 +520,7 @@ export default function CustomMixOrder() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || err.error || "Failed to save mix order");
+        throw new Error(extractApiError(err, "Failed to save mix order"));
       }
       // Generate PDF bill BEFORE resetting store
       const billData = {

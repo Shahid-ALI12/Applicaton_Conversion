@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api";
+import { extractApiError } from "@/store";
 
 import { useMemo, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -222,7 +223,7 @@ export default function CashManagementPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || err.error || "Failed to record transfer");
+        throw new Error(extractApiError(err, "Failed to record transfer"));
       }
       setTransferAmount("");
       setTransferNotes("");
@@ -271,7 +272,7 @@ export default function CashManagementPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || err.error || "Failed to apply correction");
+        throw new Error(extractApiError(err, "Failed to apply correction"));
       }
       setCorrectionTarget("");
       setCorrectionName("");
