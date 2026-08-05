@@ -10,7 +10,7 @@ import { logger } from '../logger.js';
  * app sirf PUBLIC key se verify karti hai.
  */
 const LICENSE_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEA9w0E63UlE3xeoePgks+NBcJ/TKGhlal8eHBUSnGHXOU=
+MCowBQYDK2VwAyEAe4U4edW/v7sV2xiDKhTP6mcn+G01RHOrBhgtCMM9e1E=
 -----END PUBLIC KEY-----`;
 const TRIAL_DAYS = 7;
 const EXPIRY_WARN_DAYS = 5;
