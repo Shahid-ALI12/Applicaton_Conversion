@@ -10,7 +10,17 @@ export function validateBody(schema: z.ZodType) {
         const key = issue.path.join('.') || 'root';
         fields[key] = issue.message;
       }
-      throw Object.assign(new Error('Validation fail hui.'), { status: 422, code: 'VALIDATION', fields });
+      // Build a readable message listing the failing fields so the user
+      // sees exactly what went wrong (e.g. "Validation fail hui —
+      // location_id: Required; customer_id: Required") instead of just
+      // "Validation fail hui".
+      const detail = Object.entries(fields)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join('; ');
+      const message = detail
+        ? `Validation fail hui — ${detail}`
+        : 'Validation fail hui.';
+      throw Object.assign(new Error(message), { status: 422, code: 'VALIDATION', fields });
     }
     req.body = result.data;
     next();

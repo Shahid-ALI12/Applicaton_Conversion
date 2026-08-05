@@ -506,6 +506,7 @@ export default function CustomMixOrder() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customer_id: customerId,
+          location_id: store.locationId,
           order_date: store.orderDate,
           target_weight_kg: store.targetWeight,
           items: store.ingredients.map((ing) => ({
