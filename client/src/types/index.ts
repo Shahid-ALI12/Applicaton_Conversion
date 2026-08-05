@@ -128,6 +128,8 @@ export interface Labour {
   created_at: string;
   location_id: number | null;
   locations?: Location;
+  // Flat JOIN fields returned by Applicaton_Conversion server
+  location_name?: string | null;
 }
 
 export interface LabourPayment {
@@ -140,6 +142,10 @@ export interface LabourPayment {
   entered_by: string | null;
   created_at: string;
   labours?: Labour;
+  // Flat JOIN fields returned by Applicaton_Conversion server
+  labour_name?: string | null;
+  labour_role?: string | null;
+  location_name?: string | null;
 }
 
 export interface LabourDailyWage {
@@ -151,6 +157,10 @@ export interface LabourDailyWage {
   entered_by: string | null;
   created_at: string;
   labours?: Labour;
+  // Flat JOIN fields returned by Applicaton_Conversion server
+  labour_name?: string | null;
+  labour_role?: string | null;
+  location_name?: string | null;
 }
 
 export type LabourPaymentStatus = "not_paid" | "paid";

@@ -15,6 +15,9 @@ import {
   User,
   Wrench,
   Info,
+  HardHat,
+  UserPen,
+  Users,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -39,6 +42,14 @@ const navSections = [
     label: "Customers",
     items: [
       { id: "customer-khata", label: "Customer Khata", icon: BookOpen },
+      { id: "manage-customers", label: "Manage Customers", icon: Users },
+      { id: "edit-customer", label: "Edit Customer (OB)", icon: UserPen },
+    ],
+  },
+  {
+    label: "Labours",
+    items: [
+      { id: "labour-khata", label: "Labours Khata", icon: HardHat },
     ],
   },
   {

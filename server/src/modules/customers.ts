@@ -13,7 +13,16 @@ export const customersRouter = Router();
 // LIST with balance
 customersRouter.get('/', requireAuth, (req, res) => {
   const { page, pageSize, search } = parsePage(req.query as Record<string, unknown>);
-  let where = 'deleted_at IS NULL';
+  const activeFlag = req.query.active as string | undefined;
+  const inactiveFlag = req.query.inactive as string | undefined;
+
+  // Build WHERE clause:
+  //   ?active=true   -> only non-deleted customers (default behaviour)
+  //   ?inactive=true -> only soft-deleted customers (deleted_at IS NOT NULL)
+  //   neither        -> all customers (active + inactive)
+  let where = '1=1';
+  if (inactiveFlag === 'true') where = 'deleted_at IS NOT NULL';
+  else if (activeFlag === 'true') where = 'deleted_at IS NULL';
   const params: (string | number)[] = [];
   if (search) {
     where += ' AND (name LIKE ? OR phone LIKE ?)';

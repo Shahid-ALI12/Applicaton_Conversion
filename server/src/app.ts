@@ -14,6 +14,7 @@ import { expensesRouter } from './modules/expenses.js';
 import { cashRouter } from './modules/cash.js';
 import { mixOrdersRouter } from './modules/mixOrders.js';
 import { laboursRouter } from './modules/labours.js';
+import { labourExtrasRouter } from './modules/labourExtras.js';
 import { customerPaymentsRouter } from './modules/customerPayments.js';
 import { reportsRouter } from './modules/reports.js';
 import { settingsRouter } from './modules/settings.js';
@@ -85,6 +86,8 @@ export function createApp() {
   app.use('/api/cash', cashRouter);
   app.use('/api/mix-orders', mixOrdersRouter);
   app.use('/api/labours', laboursRouter);
+  // Flat labour endpoints (mirrors Testing_Project URL shape — used by labour-khata.tsx)
+  app.use('/api', labourExtrasRouter);
   app.use('/api/customer-payments', customerPaymentsRouter);
   app.use('/api/reports', reportsRouter);
   app.use('/api/settings', settingsRouter);

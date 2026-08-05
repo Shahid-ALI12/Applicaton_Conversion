@@ -60,6 +60,38 @@ reportsRouter.get('/customer-balance/:id', requireAuth, (req, res) => {
 });
 
 /**
+ * GET /api/reports/customer-balance  (no id)
+ *
+ * Returns a map of `{ [customerId]: BalanceRow }` for ALL active customers
+ * (deleted_at IS NULL). Used by manage-customers.tsx, edit-customer.tsx, and
+ * customer-khata.tsx via the `useCustomerBalance()` hook (no customerId arg).
+ *
+ * Response shape mirrors what those pages already expect:
+ *   {
+ *     "1": { opening_balance, total_bill, total_cash_paid,
+ *            total_goods_value, advance_payment, balance_due },
+ *     "2": { ... },
+ *     ...
+ *   }
+ */
+reportsRouter.get('/customer-balance', requireAuth, (_req, res) => {
+  const ids = db.prepare(
+    'SELECT id FROM customers WHERE deleted_at IS NULL ORDER BY id ASC'
+  ).all() as { id: number }[];
+
+  const map: Record<number, ReturnType<typeof getCustomerBalance>> = {};
+  for (const { id } of ids) {
+    try {
+      map[id] = getCustomerBalance(id);
+    } catch {
+      // Skip customers whose balance can't be computed (shouldn't happen
+      // since we filter to non-deleted rows, but be defensive).
+    }
+  }
+  res.json(map);
+});
+
+/**
  * Dashboard detail panel — returns paginated rows for a specific card type.
  * Frontend calls: /api/reports/dashboard/details?type=sales-today&date=2024-01-01&page=1&pageSize=10
  */
