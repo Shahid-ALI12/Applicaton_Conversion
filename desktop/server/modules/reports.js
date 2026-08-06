@@ -4,12 +4,29 @@ import { requireAuth } from '../middleware/auth.js';
 import { getStockBalance } from '../services/stock.js';
 import { getCustomerBalance } from '../services/balances.js';
 import { cacheGet, cacheSet } from '../utils/cache.js';
+/**
+ * Return today's date in PKT (Asia/Karachi, UTC+5) as YYYY-MM-DD.
+ *
+ * IMPORTANT: The frontend (daily-entry, dashboard, etc.) saves every sale,
+ * expense, customer payment with sale_date/expense_date = pktToday() — i.e.
+ * the Pakistan local date. The dashboard metrics MUST query with the same
+ * PKT date, otherwise at any time between 19:00 UTC and 24:00 UTC (i.e.
+ * midnight to 05:00 PKT next day) the metrics card and the records list
+ * will be on different days:
+ *   - metrics used `new Date().toISOString()` (UTC date)
+ *   - records list used `pktToday()` (PKT date)
+ * and the numbers shown at the top of the dashboard won't match the rows
+ * shown in the details panel below.
+ */
+function pktToday() {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi' }).format(new Date());
+}
 export const reportsRouter = Router();
 reportsRouter.get('/dashboard', requireAuth, (_req, res) => {
     const cached = cacheGet('dashboard');
     if (cached)
         return res.json(cached);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = pktToday();
     // Metrics the frontend Dashboard expects
     const salesTodayCount = db.prepare('SELECT COUNT(*) as c FROM sales WHERE sale_date = ?').get(today).c;
     const billedToday = db.prepare('SELECT COALESCE(SUM(quantity * rate_per_bag), 0) as t FROM sales WHERE sale_date = ?').get(today).t;
@@ -84,7 +101,11 @@ reportsRouter.get('/customer-balance', requireAuth, (_req, res) => {
  */
 reportsRouter.get('/dashboard/details', requireAuth, (req, res) => {
     const type = req.query.type;
-    const date = req.query.date ?? new Date().toISOString().slice(0, 10);
+    // Default to PKT date when no date is provided by the client. The frontend
+    // ALWAYS sends ?date=pktToday() so this is just a safety net, but it MUST
+    // be the PKT date — not the UTC date — to stay consistent with how records
+    // are stored (sale_date/expense_date are PKT dates).
+    const date = req.query.date ?? pktToday();
     const page = Math.max(1, Number(req.query.page) || 1);
     const pageSize = Math.min(200, Math.max(1, Number(req.query.pageSize) || 10));
     const offset = (page - 1) * pageSize;
@@ -201,7 +222,9 @@ reportsRouter.get('/dashboard/details', requireAuth, (req, res) => {
     res.json({ rows, total, page, pageSize, totalPages, label: type });
 });
 reportsRouter.get('/reconciliation', requireAuth, (req, res) => {
-    const date = req.query.date ?? new Date().toISOString().slice(0, 10);
+    // Default to PKT date — see pktToday() comment above. Sales/expenses are
+    // stored with PKT dates; reconciliation must use the same calendar.
+    const date = req.query.date ?? pktToday();
     const sales = db.prepare('SELECT COALESCE(SUM(cash_received), 0) as t FROM sales WHERE sale_date = ?').get(date).t;
     const expenses = db.prepare('SELECT COALESCE(SUM(amount), 0) as t FROM expenses WHERE expense_date = ?').get(date).t;
     const purchases = db.prepare('SELECT COALESCE(SUM(cash_paid), 0) as t FROM purchases WHERE purchase_date = ?').get(date).t;
