@@ -75,7 +75,12 @@ export function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   const token = getToken();
   const headers = new Headers(init?.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  if (init?.body && !headers.has('Content-Type')) {
+  // Only set Content-Type: application/json for non-FormData bodies.
+  // FormData must NOT have Content-Type set manually — the browser needs
+  // to set it automatically with the correct multipart/form-data boundary.
+  // (Setting application/json on a FormData body causes express.json() to
+  // try parsing the multipart payload as JSON → "Unexpected token '-'" error.)
+  if (init?.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
   return fetch(url, { ...init, headers });
