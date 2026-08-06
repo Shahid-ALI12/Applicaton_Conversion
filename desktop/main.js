@@ -53,8 +53,9 @@ function createWindow() {
   mainWindow.loadURL(`http://127.0.0.1:${serverPort}/`);
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
-    // Open DevTools for debugging — remove in final production
-    mainWindow?.webContents.openDevTools();
+    // DevTools intentionally NOT opened in production — keeps the UI clean
+    // for end users. To debug, use Ctrl+Shift+I or uncomment the line below:
+    // mainWindow?.webContents.openDevTools();
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
