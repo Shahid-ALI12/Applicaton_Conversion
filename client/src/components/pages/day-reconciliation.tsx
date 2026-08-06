@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api";
+import { extractApiError } from "@/store";
 
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -253,12 +254,11 @@ export default function DayReconciliation() {
         if (d.label) setDetailLabel(d.label);
       } else {
         const err = await res.json().catch(() => ({}));
-        const errMsg = typeof err?.error === 'string' ? err.error : err?.error?.message || err?.detail || "Failed to load records";
-        setDetailError(errMsg);
+        setDetailError(extractApiError(err, `Failed to load records (HTTP ${res.status})`));
       }
-    } catch {
+    } catch (e: any) {
       setDetailRows([]);
-      setDetailError("Network error — check your connection");
+      setDetailError(e?.message || "Network error — check your connection");
     } finally {
       setDetailLoading(false);
     }
@@ -294,14 +294,13 @@ export default function DayReconciliation() {
           if (d.label) setDetailLabel(d.label);
         } else {
           const err = await res.json().catch(() => ({}));
-          const errMsg = typeof err?.error === 'string' ? err.error : err?.error?.message || err?.detail || "Failed to load records";
-          setDetailError(errMsg);
+          setDetailError(extractApiError(err, `Failed to load records (HTTP ${res.status})`));
           setDetailRows([]);
         }
-      } catch {
+      } catch (e: any) {
         if (!cancelled) {
           setDetailRows([]);
-          setDetailError("Network error — check your connection");
+          setDetailError(e?.message || "Network error — check your connection");
         }
       } finally {
         if (!cancelled) setDetailLoading(false);
