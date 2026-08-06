@@ -9,9 +9,11 @@
 #
 # When run on Windows, the installer:
 #   1. Prompts the user for an installation folder
-#   2. Extracts all files there
+#   2. Extracts all files there (including uninstall.bat)
 #   3. Runs install-and-run.bat (creates desktop + start menu shortcuts)
 #   4. Launches the app
+#
+# To uninstall later: open the install folder and double-click uninstall.bat
 #
 # Requirements:
 #   - desktop/release/win-unpacked/ must already be built (via `npm run dist`)
@@ -100,6 +102,118 @@ start "" "%APPEXE%"
 
 exit /b 0
 BATCH_EOF
+
+# 2b. Create uninstall.bat (placed in the install folder for easy removal)
+echo "[2b/5] Creating uninstall.bat..."
+cat > DanishCattleFeed/uninstall.bat <<'UNINSTALL_EOF'
+@echo off
+:: Danish Cattle Feed Software - Uninstaller
+:: Place this file in the install folder. Double-click to uninstall.
+
+title Danish Cattle Feed Software - Uninstaller
+color 0E
+chcp 65001 >NUL 2>&1
+
+echo ============================================
+echo   Danish Cattle Feed Software - Uninstaller
+echo ============================================
+echo.
+
+set "APPDIR=%~dp0"
+:: remove trailing backslash
+set "APPDIR=%APPDIR:~0,-1%"
+
+:: --- Close running app ---
+tasklist /FI "IMAGENAME eq Danish Cattle Feed Software.exe" 2>NUL | find /I "Danish Cattle Feed Software.exe" >NUL
+if %ERRORLEVEL% equ 0 (
+    echo [!] Application is running. Closing it...
+    taskkill /F /IM "Danish Cattle Feed Software.exe" >NUL 2>&1
+    timeout /t 2 /nobreak >NUL
+)
+
+:: --- Confirm uninstall ---
+echo.
+choice /C YN /M "Are you sure you want to uninstall Danish Cattle Feed Software"
+if errorlevel 2 (
+    echo.
+    echo Uninstall cancelled.
+    timeout /t 3 /nobreak >NUL
+    exit /b 0
+)
+
+:: --- Ask about data removal ---
+echo.
+echo Choose data removal option:
+echo   [1] Remove everything (program files + database + backups + logs)
+echo   [2] Keep app data (only remove program files, keep database)
+echo.
+choice /C 12 /M "Select option"
+set "REMOVE_DATA=%ERRORLEVEL%"
+
+echo.
+echo --------------------------------------------
+echo [1/4] Removing desktop shortcut...
+set "SHORTCUT=%USERPROFILE%\Desktop\Danish Cattle Feed Software.lnk"
+if exist "%SHORTCUT%" (
+    del /F /Q "%SHORTCUT%"
+    echo       Done.
+) else (
+    echo       Not found - skipped.
+)
+
+echo [2/4] Removing Start Menu shortcut...
+set "STARTMENU=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Danish Cattle Feed Software.lnk"
+if exist "%STARTMENU%" (
+    del /F /Q "%STARTMENU%"
+    echo       Done.
+) else (
+    echo       Not found - skipped.
+)
+
+echo [3/4] App data folder...
+set "APPDATA_DIR=%APPDATA%\Danish Cattle Feed Software"
+if "%REMOVE_DATA%"=="1" (
+    if exist "%APPDATA_DIR%" (
+        rmdir /S /Q "%APPDATA_DIR%"
+        echo       Removed - all data deleted.
+    ) else (
+        echo       Not found - skipped.
+    )
+) else (
+    if exist "%APPDATA_DIR%" (
+        echo       KEPT at: %APPDATA_DIR%
+    ) else (
+        echo       Nothing to keep.
+    )
+)
+
+echo [4/4] Removing installation folder...
+echo       Will complete after this window closes.
+echo.
+
+:: --- Self-deletion trick: copy to temp, run from there to delete parent ---
+set "SELF=%~f0"
+set "TEMPBAT=%TEMP%\dcf_uninstall_%RANDOM%.bat"
+
+(
+    echo @echo off
+    echo timeout /t 3 /nobreak ^>NUL
+    echo del /F /Q "%SELF%" 2^>NUL
+    echo rmdir /S /Q "%APPDIR%" 2^>NUL
+    echo del /F /Q "%TEMPBAT%" 2^>NUL
+) > "%TEMPBAT%"
+
+echo --------------------------------------------
+echo   Uninstall Complete!
+echo --------------------------------------------
+echo.
+echo The installation folder will be removed shortly.
+echo This window will close automatically.
+echo.
+
+start /min "" "%TEMPBAT%"
+exit /b 0
+UNINSTALL_EOF
 
 # 3. Create the SFX config
 echo "[3/5] Creating SFX config..."
