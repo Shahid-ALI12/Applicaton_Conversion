@@ -74,10 +74,10 @@ async function main() {
     const hand = accounts.find((a) => /hand/i.test(a.name)) || accounts[0];
     console.log(`  Using account: ${hand.name} (id=${hand.id})`);
 
-    // 2. Get current balance
+    // 2. Get current balance (now returns { "Cash In Hand": 950, ... })
     const balRes = await fetch(`${BASE}/api/cash/balances`, { headers: H });
     const balances = await balRes.json();
-    const cur = balances.find((b) => b.id === hand.id)?.balance ?? 0;
+    const cur = balances[hand.name] ?? 0;
     console.log(`  Current balance: ${cur}`);
 
     // 3. POST with the OLD payload (no correction_date) — was rejected before fix

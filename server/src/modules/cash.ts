@@ -12,6 +12,11 @@ cashRouter.get('/accounts', requireAuth, (_req, res) => {
   res.json(rows);
 });
 
+// IMPORTANT: frontend's useCashBalances hook expects Record<string, number>
+// i.e. { "Cash In Hand": 1000, "Cash In Locker": 500 } keyed by account name.
+// Previously this returned an array [{id, name, balance}, ...] which the
+// frontend silently dropped (because Array.isArray check failed) — making
+// every balance card show "Rs. 0" even after corrections/transfers.
 cashRouter.get('/balances', requireAuth, (_req, res) => {
   const rows = db.prepare(`
     SELECT ca.id, ca.name,
@@ -20,8 +25,12 @@ cashRouter.get('/balances', requireAuth, (_req, res) => {
     LEFT JOIN cash_ledger cl ON cl.account_id = ca.id
     GROUP BY ca.id
     ORDER BY ca.id
-  `).all();
-  res.json(rows);
+  `).all() as Array<{ id: number; name: string; balance: number }>;
+  const result: Record<string, number> = {};
+  for (const r of rows) {
+    result[r.name] = r.balance;
+  }
+  res.json(result);
 });
 
 cashRouter.get('/ledger', requireAuth, (req, res) => {
@@ -35,6 +44,64 @@ cashRouter.get('/ledger', requireAuth, (req, res) => {
   if (dateTo) { where += ' AND cl.entry_date <= ?'; params.push(dateTo); }
   const rows = db.prepare(`SELECT cl.*, ca.name as account_name FROM cash_ledger cl JOIN cash_accounts ca ON ca.id=cl.account_id WHERE ${where} ORDER BY cl.id DESC LIMIT 500`).all(...params);
   res.json(rows);
+});
+
+// GET — paginated transfer history. Frontend's useCashTransfers hook expects:
+//   { rows: CashTransfer[]; total: number; page: number; pageSize: number; totalPages: number }
+// Filters: ?dateFrom=&dateTo=&page=&pageSize=
+cashRouter.get('/transfer', requireAuth, (req, res) => {
+  const dateFrom = req.query.dateFrom as string | undefined;
+  const dateTo = req.query.dateTo as string | undefined;
+  const page = Math.max(1, Number(req.query.page ?? '1') || 1);
+  const pageSize = Math.min(500, Math.max(1, Number(req.query.pageSize ?? '20') || 20));
+
+  let where = '1=1';
+  const params: (string | number)[] = [];
+  if (dateFrom) { where += ' AND ct.transfer_date >= ?'; params.push(dateFrom); }
+  if (dateTo) { where += ' AND ct.transfer_date <= ?'; params.push(dateTo); }
+
+  const totalRow = db.prepare(`SELECT COUNT(*) as n FROM cash_transfers ct WHERE ${where}`).get(...params) as { n: number };
+  const total = totalRow.n;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const offset = (page - 1) * pageSize;
+
+  const rows = db.prepare(`
+    SELECT ct.id, ct.transfer_date, ct.from_account_id, ct.to_account_id, ct.amount, ct.notes, ct.entered_by, ct.created_at,
+      fa.name as from_account_name, ta.name as to_account_name
+    FROM cash_transfers ct
+    LEFT JOIN cash_accounts fa ON fa.id = ct.from_account_id
+    LEFT JOIN cash_accounts ta ON ta.id = ct.to_account_id
+    WHERE ${where}
+    ORDER BY ct.id DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, pageSize, offset) as Array<{
+    id: number;
+    transfer_date: string;
+    from_account_id: number;
+    to_account_id: number;
+    amount: number;
+    notes: string | null;
+    entered_by: string | null;
+    created_at: string;
+    from_account_name: string | null;
+    to_account_name: string | null;
+  }>;
+
+  // Match CashTransfer type expected by frontend: include from_account / to_account nested objects
+  const mapped = rows.map((r) => ({
+    id: r.id,
+    transfer_date: r.transfer_date,
+    from_account_id: r.from_account_id,
+    to_account_id: r.to_account_id,
+    amount: r.amount,
+    notes: r.notes,
+    entered_by: r.entered_by,
+    created_at: r.created_at,
+    from_account: r.from_account_name ? { id: r.from_account_id, name: r.from_account_name } : null,
+    to_account: r.to_account_name ? { id: r.to_account_id, name: r.to_account_name } : null,
+  }));
+
+  res.json({ rows: mapped, total, page, pageSize, totalPages });
 });
 
 cashRouter.post('/transfer', requireAuth, validateBody(z.object({
