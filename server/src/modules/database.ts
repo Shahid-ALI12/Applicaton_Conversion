@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import multer from 'multer';
 import BetterSqlite3 from 'better-sqlite3';
-import { db } from '../db/connection.js';
+import { db, closeDatabase, reopenDatabase } from '../db/connection.js';
 import { config } from '../config.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { runBackup } from '../services/backup.js';
@@ -162,20 +162,35 @@ databaseRouter.post('/restore', requireAuth, requireAdmin, upload.single('file')
       logger.warn({ err }, 'WAL checkpoint failed during restore (continuing anyway)');
     }
 
-    // 4. Replace the current database file with the uploaded one
-    //    We can't simply overwrite (the running process has the file open).
-    //    Strategy: rename current -> .restoring.old, then move uploaded -> main path.
-    //    If anything fails, we can rename back.
+    // 4. Replace the current database file with the uploaded one.
+    //
+    //    On Windows, the running SQLite connection holds an exclusive lock
+    //    on the .db file, so we CANNOT rename or overwrite it while the
+    //    connection is open. Strategy:
+    //      a. Close the live DB connection (releases the file lock)
+    //      b. Rename current .db → .pre-restore-<ts>.db (safety)
+    //      c. Move uploaded .db → main .db path
+    //      d. Remove stale -wal / -shm sidecar files
+    //      e. Reopen the DB connection (loads the new file)
+    //    If any step (b)-(c) fails, we revert by renaming the safety copy
+    //    back to the original name, then reopen.
     const mainDb = config.dbFile;
     const backupOfCurrent = `${mainDb}.pre-restore-${Date.now()}.db`;
     let restored = false;
     try {
-      // Copy current to safety rename
+      // (a) Close the connection — releases the Windows file lock
+      try {
+        closeDatabase();
+      } catch (err: any) {
+        logger.warn({ err }, 'DB close before swap failed (continuing — may still work on Linux)');
+      }
+
+      // (b) Rename current → safety backup name
       renameSync(mainDb, backupOfCurrent);
       try {
-        // Move uploaded file to main DB location
+        // (c) Move uploaded file → main DB path
         renameSync(uploadedPath, mainDb);
-        // Also remove the WAL/SHM files if they exist (they'll be recreated on next open)
+        // (d) Remove stale -wal / -shm files (they'll be recreated on next open)
         for (const ext of ['-wal', '-shm']) {
           const f = `${mainDb}${ext}`;
           if (existsSync(f)) {
@@ -184,12 +199,16 @@ databaseRouter.post('/restore', requireAuth, requireAdmin, upload.single('file')
         }
         restored = true;
       } catch (err: any) {
-        // Move failed — restore the original
+        // Move failed — revert by restoring the original file
         logger.error({ err }, 'Restore move failed, reverting to original DB');
         try { renameSync(backupOfCurrent, mainDb); } catch { /* ignore */ }
         throw err;
       }
     } catch (err: any) {
+      // Reopen DB before returning so the app keeps working
+      try { reopenDatabase(); } catch (e: any) {
+        logger.error({ err: e }, 'DB reopen after FAILED restore failed — app may be in a broken state');
+      }
       try { unlinkSync(uploadedPath); } catch { /* ignore */ }
       return res.status(500).json({
         error: {
@@ -201,7 +220,26 @@ databaseRouter.post('/restore', requireAuth, requireAdmin, upload.single('file')
       });
     }
 
+    // 5. Reopen the DB connection so the running process sees the new file.
+    //    (The connection still points to the old file descriptor; we must
+    //    re-open to pick up the swapped-in database.)
     if (restored) {
+      try {
+        reopenDatabase();
+      } catch (err: any) {
+        // Reopen failed — this is bad, but the file swap succeeded, so a
+        // restart of the app will still load the new database correctly.
+        logger.error({ err }, 'DB reopen after restore failed — app restart required');
+        return res.status(500).json({
+          error: {
+            code: 'REOPEN_FAILED',
+            message: 'Database file was replaced, but the app could not re-open it. Please RESTART the application immediately.',
+            detail: err?.message,
+            safetyBackup: safetyBackupPath,
+          }
+        });
+      }
+
       // Clean up the pre-restore backup (the safety backup in backups/ is enough)
       try { unlinkSync(backupOfCurrent); } catch { /* ignore */ }
 
