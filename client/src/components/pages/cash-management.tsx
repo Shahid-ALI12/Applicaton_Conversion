@@ -268,7 +268,13 @@ export default function CashManagementPage() {
       const res = await apiFetch("/api/cash/correction", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account_id: accId, target, name: trimmedName, reason: trimmedReason }),
+        body: JSON.stringify({
+          account_id: accId,
+          target,
+          correction_date: pktToday(),
+          name: trimmedName,
+          reason: trimmedReason,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

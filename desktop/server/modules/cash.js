@@ -60,23 +60,49 @@ cashRouter.post('/transfer', requireAuth, validateBody(z.object({
     cacheInvalidate('cash_ledger');
     res.status(201).json(result);
 });
+function pktToday() {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi' }).format(new Date());
+}
 cashRouter.post('/correction', requireAuth, validateBody(z.object({
     account_id: z.number().int().positive(),
     target: z.number(),
-    correction_date: z.string(),
+    correction_date: z.string().optional(),
+    name: z.string().min(1),
+    reason: z.string().min(1),
     entered_by: z.string().nullable().optional(),
 })), (req, res) => {
     const body = req.body;
+    const correctionDate = body.correction_date || pktToday();
+    const trimmedName = (typeof body.name === 'string' ? body.name : '').trim();
+    const trimmedReason = (typeof body.reason === 'string' ? body.reason : '').trim();
+    if (!trimmedName)
+        throw Object.assign(new Error('Naam likhna zaroori hai (Name is required)'), { status: 400, code: 'BAD_INPUT' });
+    if (!trimmedReason)
+        throw Object.assign(new Error('Reason likhna zaroori hai (Reason is required)'), { status: 400, code: 'BAD_INPUT' });
     const result = db.transaction(() => {
         const current = db.prepare(`SELECT COALESCE(SUM(CASE WHEN direction='in' THEN amount ELSE -amount END), 0) as bal FROM cash_ledger WHERE account_id = ?`).get(body.account_id).bal;
         const diff = round2(body.target - current);
         if (diff === 0)
             return { adjusted: false };
         const dir = diff > 0 ? 'in' : 'out';
-        db.prepare('INSERT INTO cash_ledger (entry_date, account_id, direction, amount, source_type, description, entered_by) VALUES (?, ?, ?, ?, ?, ?, ?)').run(body.correction_date, body.account_id, dir, Math.abs(diff), 'correction', 'Manual balance correction', body.entered_by ?? null);
+        const description = `Manual correction: ${trimmedReason}`;
+        db.prepare('INSERT INTO cash_ledger (entry_date, account_id, direction, amount, source_type, description, entered_by) VALUES (?, ?, ?, ?, ?, ?, ?)').run(correctionDate, body.account_id, dir, Math.abs(diff), 'correction', description, trimmedName);
         return { adjusted: true, previous: current, new: body.target, diff };
     })();
     cacheInvalidate('cash_ledger');
-    res.json(result);
+    res.status(201).json(result);
+});
+// GET — list all manual corrections (source_type = 'correction') with account names
+cashRouter.get('/correction', requireAuth, (_req, res) => {
+    const rows = db.prepare(`
+    SELECT cl.id, cl.entry_date, cl.account_id, ca.name as account_name,
+           cl.direction, cl.amount, cl.description, cl.entered_by, cl.created_at
+    FROM cash_ledger cl
+    JOIN cash_accounts ca ON ca.id = cl.account_id
+    WHERE cl.source_type = 'correction'
+    ORDER BY cl.id DESC
+    LIMIT 500
+  `).all();
+    res.json({ corrections: rows });
 });
 //# sourceMappingURL=cash.js.map
