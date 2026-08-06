@@ -1,10 +1,9 @@
 import { apiFetch } from "@/lib/api";
+import { extractApiError } from "@/store";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { QuickNav } from "@/components/shared/quick-nav";
-import { apiError } from "@/store";
-import type { BackupFilter, RestoreMode } from "@/types";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,150 +15,99 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Database,
   Download,
   Loader2,
   ShieldCheck,
-  Calendar,
   AlertTriangle,
   FileJson,
-  Clock,
   CheckCircle2,
   Upload,
   FileUp,
   ArrowRight,
   Terminal,
+  HardDrive,
+  RefreshCw,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { pktToday } from "@/lib/pkt-date";
 import { cn } from "@/lib/utils";
 
-const FILTER_OPTIONS: { value: BackupFilter; label: string; description: string }[] = [
-  {
-    value: "all",
-    label: "All Database",
-    description: "Everything since the day you started using the app",
-  },
-  {
-    value: "today",
-    label: "Today Only",
-    description: "Only today's transactions (master data is always included)",
-  },
-  {
-    value: "month",
-    label: "This Month",
-    description: "From the 1st of this month to today",
-  },
-  {
-    value: "year",
-    label: "This Year (Jan–Dec)",
-    description: "From January 1st of this year to today",
-  },
-  {
-    value: "custom",
-    label: "Custom Range",
-    description: "Pick any from/to dates",
-  },
-];
+interface DatabaseInfo {
+  path: string;
+  size: number;
+  sizeFormatted: string;
+  lastModified: string;
+  counts: Record<string, number>;
+}
 
-const INCLUDED_TABLES = [
-  { name: "Products", category: "Master", note: "Always included" },
-  { name: "Customers (business)", category: "Master", note: "Always included" },
-  { name: "Suppliers", category: "Master", note: "Always included" },
-  { name: "Cash Accounts", category: "Master", note: "Always included" },
-  { name: "Product Stock", category: "Master", note: "Current snapshot — always included" },
-  { name: "Sales", category: "Transactional", note: "Date-filtered" },
-  { name: "Mix Orders", category: "Transactional", note: "Date-filtered" },
-  { name: "Purchases", category: "Transactional", note: "Date-filtered" },
-  { name: "Expenses", category: "Transactional", note: "Date-filtered" },
-  { name: "Cash Ledger", category: "Transactional", note: "Date-filtered" },
-  { name: "Cash Transfers", category: "Transactional", note: "Date-filtered" },
-];
-
-const RESTORE_MODES: { value: RestoreMode; label: string; description: string }[] = [
-  {
-    value: "merge",
-    label: "Safe Merge (Recommended)",
-    description: "Overwrite existing rows with backup data. Same IDs get updated, new IDs get inserted. Nothing is deleted.",
-  },
-  {
-    value: "append",
-    label: "Append Only",
-    description: "Only insert rows whose IDs don't already exist. Existing rows stay untouched. Safe if you only want to add missing records.",
-  },
-];
+const TABLE_LABELS: Record<string, string> = {
+  products: "Products",
+  customers: "Customers",
+  sales: "Sales",
+  expenses: "Expenses",
+  purchases: "Purchases",
+  cash_ledger: "Cash Ledger Entries",
+  mix_orders: "Mix Orders",
+};
 
 export default function DatabaseManagementPage() {
-  const [filter, setFilter] = useState<BackupFilter>("all");
-  const [from, setFrom] = useState<string>(pktToday());
-  const [to, setTo] = useState<string>(pktToday());
   const [downloading, setDownloading] = useState(false);
+  const [dbInfo, setDbInfo] = useState<DatabaseInfo | null>(null);
+  const [infoLoading, setInfoLoading] = useState(false);
 
   // ─── Restore state ───
-  const [restoreMode, setRestoreMode] = useState<RestoreMode>("merge");
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [restoreResult, setRestoreResult] = useState<{
+    ok: boolean;
+    message: string;
+    safetyBackup?: string;
+    newDbSize?: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isCustom = filter === "custom";
   const today = pktToday();
 
-  const rangePreview = useMemo(() => {
-    switch (filter) {
-      case "all":
-        return null;
-      case "today":
-        return today;
-      case "month": {
-        const d = new Date(today + "T00:00:00+05:00");
-        const first = new Date(d.getFullYear(), d.getMonth(), 1);
-        return `${first.toISOString().slice(0, 10)} → ${today}`;
+  // Fetch current DB info on mount
+  const fetchInfo = async () => {
+    setInfoLoading(true);
+    try {
+      const res = await apiFetch("/api/database/info");
+      if (res.ok) {
+        const data = await res.json();
+        setDbInfo(data);
       }
-      case "year": {
-        const d = new Date(today + "T00:00:00+05:00");
-        return `${d.getFullYear()}-01-01 → ${today}`;
-      }
-      case "custom":
-        return `${from} → ${to}`;
+    } catch {
+      // silent fail — info is non-critical
+    } finally {
+      setInfoLoading(false);
     }
-  }, [filter, today, from, to]);
+  };
+
+  useEffect(() => {
+    fetchInfo();
+  }, []);
 
   const handleDownload = async () => {
-    if (isCustom) {
-      if (!from || !to) {
-        toast.error("Please pick both From and To dates");
-        return;
-      }
-      if (from > to) {
-        toast.error("From date must be before or equal to To date");
-        return;
-      }
-    }
-
     setDownloading(true);
     try {
-      const params = new URLSearchParams({ filter });
-      if (isCustom) {
-        params.set("from", from);
-        params.set("to", to);
-      }
+      toast.loading("Creating database backup…", { id: "backup-dl" });
 
-      toast.loading("Generating backup…", { id: "backup-dl" });
-
-      const res = await apiFetch(`/api/database/backup?${params.toString()}`);
+      const res = await apiFetch("/api/database/backup");
       if (!res.ok) {
-        const detail = await apiError(res, "Failed to generate backup");
-        throw new Error(detail);
+        const err = await res.json().catch(() => ({}));
+        throw new Error(extractApiError(err, "Failed to generate backup"));
       }
 
       // Read response as blob and trigger download
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") || "";
       const match = disposition.match(/filename="?([^"]+)"?/);
-      const filename = match?.[1] || `backup_${today}_${filter}.json`;
+      const filename = match?.[1] || `danishcattlefeed-backup-${today}.db`;
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -170,7 +118,11 @@ export default function DatabaseManagementPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast.success("Backup downloaded successfully!", { id: "backup-dl" });
+      const sizeHeader = res.headers.get("X-Backup-Size") || "";
+      toast.success(
+        `Backup downloaded successfully!${sizeHeader ? ` (${sizeHeader})` : ""}`,
+        { id: "backup-dl", duration: 5000 }
+      );
     } catch (e: any) {
       toast.error(e.message || "Failed to download backup", { id: "backup-dl" });
     } finally {
@@ -182,18 +134,20 @@ export default function DatabaseManagementPage() {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setRestoreResult(null);
     if (!file) {
       setRestoreFile(null);
       return;
     }
-    if (!file.name.endsWith(".json")) {
-      toast.error("Please select a .json backup file");
+    const name = file.name.toLowerCase();
+    if (!name.endsWith(".db") && !name.endsWith(".sqlite") && !name.endsWith(".sqlite3")) {
+      toast.error("Please select a .db backup file");
       setRestoreFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error("File too large. Max 50 MB.");
+    if (file.size > 500 * 1024 * 1024) {
+      toast.error("File too large. Max 500 MB.");
       setRestoreFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
@@ -203,48 +157,47 @@ export default function DatabaseManagementPage() {
 
   const handleRestore = async () => {
     if (!restoreFile) {
-      toast.error("Pick a backup file first");
+      toast.error("Pick a .db backup file first");
       return;
     }
     setRestoring(true);
+    setRestoreResult(null);
     try {
       const fd = new FormData();
       fd.append("file", restoreFile);
-      fd.append("mode", restoreMode);
 
-      toast.loading("Generating SQL restore script…", { id: "restore-dl" });
+      toast.loading("Restoring database…", { id: "restore-dl" });
 
       const res = await apiFetch("/api/database/restore", {
         method: "POST",
         body: fd,
       });
+      const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const detail = await apiError(res, "Failed to build restore script");
-        throw new Error(detail);
+        const msg = extractApiError(data, "Failed to restore database");
+        throw new Error(msg);
       }
 
-      // Read SQL as blob and trigger download
-      const blob = await res.blob();
-      const disposition = res.headers.get("Content-Disposition") || "";
-      const match = disposition.match(/filename="?([^"]+)"?/);
-      const filename = match?.[1] || `restore_${today}_${restoreMode}.sql`;
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      const rows = res.headers.get("X-Restore-Rows") || "?";
+      setRestoreResult({
+        ok: true,
+        message: data.message || "Database restored successfully.",
+        safetyBackup: data.safetyBackup,
+        newDbSize: data.newDbSize,
+      });
       toast.success(
-        `SQL script downloaded (${rows} rows). Run it in Supabase SQL Editor to restore.`,
-        { id: "restore-dl", duration: 8000 }
+        "Database restored! Please RESTART the app to load the new data.",
+        { id: "restore-dl", duration: 10000 }
       );
+
+      // Refresh info
+      fetchInfo();
     } catch (e: any) {
-      toast.error(e.message || "Failed to build restore script", { id: "restore-dl" });
+      setRestoreResult({
+        ok: false,
+        message: e.message || "Failed to restore database",
+      });
+      toast.error(e.message || "Failed to restore database", { id: "restore-dl" });
     } finally {
       setRestoring(false);
     }
@@ -261,13 +214,12 @@ export default function DatabaseManagementPage() {
         <QuickNav
           title="Jump to"
           items={[
-            { id: "section-backup-choose", label: "1. Choose Backup", icon: Calendar },
-            { id: "section-backup-inside", label: "2. What's Inside", icon: FileJson },
-            { id: "section-backup-download", label: "3. Download", icon: Download, iconColor: "text-emerald-600" },
+            { id: "section-db-info", label: "Current Database", icon: HardDrive, iconColor: "text-blue-600" },
+            { id: "section-backup-download", label: "Download Backup", icon: Download, iconColor: "text-emerald-600" },
             { id: "section-restore", label: "Restore Section", icon: Upload, iconColor: "text-amber-600" },
             { id: "section-restore-choose", label: "1. Select File", icon: FileUp },
-            { id: "section-restore-mode", label: "2. Restore Mode", icon: ShieldCheck },
-            { id: "section-restore-script", label: "3. SQL Script", icon: Terminal },
+            { id: "section-restore-action", label: "2. Restore", icon: ShieldCheck },
+            { id: "section-how-to", label: "How to Use", icon: Info },
           ]}
         />
 
@@ -279,158 +231,121 @@ export default function DatabaseManagementPage() {
                 <Database className="size-5 text-blue-600" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-sm font-bold text-slate-900">Download a backup of your data</h3>
+                <h3 className="text-sm font-bold text-slate-900">Backup & Restore — Local SQLite Database</h3>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Export all your business data (products, customers, sales, purchases, cash, stock, etc.)
-                  into a single JSON file you can save on your laptop. If you ever lose data —
-                  accidental delete, bug, or Supabase issue — you can restore from this file
-                  by running a SQL script in Supabase SQL Editor.
+                  This software stores all your business data in a local SQLite database file (`.db`) on your computer.
+                  You can download a full snapshot of this file anytime and restore it later if data is lost or corrupted.
+                  No cloud, no Supabase — everything stays on your machine.
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Filter selection */}
-        <Card id="section-backup-choose" className="rounded-2xl border-slate-200/60 shadow-sm bg-white scroll-mt-24">
+        {/* Current Database Info */}
+        <Card id="section-db-info" className="rounded-2xl border-slate-200/60 shadow-sm bg-white scroll-mt-24">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Calendar className="size-5 text-slate-600" /> 1. Choose What to Backup
+              <HardDrive className="size-5 text-slate-600" /> Current Database
             </CardTitle>
             <CardDescription>
-              Master data (products, customers, suppliers, etc.) is always included.
-              Date filters apply only to transactions (sales, purchases, expenses, etc.).
+              Live snapshot of your currently active database file.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <RadioGroup
-              value={filter}
-              onValueChange={(v) => setFilter(v as BackupFilter)}
-              className="grid grid-cols-1 sm:grid-cols-2 gap-3"
-            >
-              {FILTER_OPTIONS.map((opt) => {
-                const isActive = filter === opt.value;
-                return (
-                  <label
-                    key={opt.value}
-                    htmlFor={`bf-${opt.value}`}
-                    className={cn(
-                      "flex items-start space-x-3 rounded-xl border px-4 py-3.5 cursor-pointer transition-colors",
-                      isActive
-                        ? "border-emerald-500 bg-emerald-50/40"
-                        : "border-slate-200/60 bg-slate-50/40 hover:bg-slate-50"
-                    )}
-                  >
-                    <RadioGroupItem value={opt.value} id={`bf-${opt.value}`} className="mt-0.5" />
-                    <div className="space-y-0.5">
-                      <div className="text-sm font-semibold text-slate-800">{opt.label}</div>
-                      <div className="text-xs text-slate-500 leading-relaxed">{opt.description}</div>
+            {infoLoading ? (
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <Loader2 className="size-4 animate-spin" /> Loading database info…
+              </div>
+            ) : dbInfo ? (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-xl border border-slate-200/60 bg-slate-50/40 p-4">
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">File Size</div>
+                    <div className="text-lg font-bold text-slate-900 mt-1">{dbInfo.sizeFormatted}</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200/60 bg-slate-50/40 p-4">
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Last Modified</div>
+                    <div className="text-lg font-bold text-slate-900 mt-1">
+                      {new Date(dbInfo.lastModified).toLocaleString("en-PK", {
+                        timeZone: "Asia/Karachi",
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
                     </div>
-                  </label>
-                );
-              })}
-            </RadioGroup>
-
-            {/* Custom date range */}
-            {isCustom && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl border border-emerald-200/60 bg-emerald-50/20">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                    From Date
-                  </Label>
-                  <Input
-                    type="date"
-                    value={from}
-                    onChange={(e) => setFrom(e.target.value)}
-                    max={to}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                    To Date
-                  </Label>
-                  <Input
-                    type="date"
-                    value={to}
-                    onChange={(e) => setTo(e.target.value)}
-                    min={from}
-                    max={today}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Range preview */}
-            {rangePreview && (
-              <div className="flex items-center gap-2 rounded-lg bg-slate-100/80 px-4 py-2.5 border border-slate-200/60">
-                <Clock className="size-4 text-slate-500" />
-                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                  Date Range:
-                </span>
-                <span className="text-sm font-mono text-slate-900">{rangePreview}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* What's included */}
-        <Card id="section-backup-inside" className="rounded-2xl border-slate-200/60 shadow-sm bg-white scroll-mt-24">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <FileJson className="size-5 text-slate-600" /> 2. What's Inside the Backup
-            </CardTitle>
-            <CardDescription>
-              The JSON file contains all 12 business tables. Login passwords are excluded for security.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {INCLUDED_TABLES.map((t) => (
-                <div
-                  key={t.name}
-                  className="flex items-center justify-between rounded-lg border border-slate-200/60 px-3 py-2 bg-slate-50/40"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-slate-800 truncate">{t.name}</div>
-                      <div className="text-[10px] text-slate-500 uppercase tracking-wide">
-                        {t.category} · {t.note}
-                      </div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200/60 bg-slate-50/40 p-4">
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">File Path</div>
+                    <div className="text-xs font-mono text-slate-700 mt-1 truncate" title={dbInfo.path}>
+                      {dbInfo.path}
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
 
-            <Alert className="mt-4 border-amber-300 bg-amber-50 text-amber-800">
-              <ShieldCheck className="size-4 text-amber-600" />
-              <AlertDescription>
-                <span className="font-semibold">Security note:</span> Login accounts
-                (with password hashes) are <span className="font-semibold">NOT</span> included in the backup.
-                Supabase Auth handles admin accounts separately — those are managed through the
-                Supabase Dashboard, not this export.
-              </AlertDescription>
-            </Alert>
+                <div>
+                  <div className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                    Records by Table
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                    {Object.entries(dbInfo.counts).map(([table, count]) => (
+                      <div
+                        key={table}
+                        className="rounded-lg border border-slate-200/60 px-3 py-2 bg-white"
+                      >
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wide truncate">
+                          {TABLE_LABELS[table] || table}
+                        </div>
+                        <div className="text-base font-bold text-slate-900">{count}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchInfo}
+                  disabled={infoLoading}
+                  className="gap-2"
+                >
+                  <RefreshCw className={cn("size-4", infoLoading && "animate-spin")} />
+                  Refresh
+                </Button>
+              </>
+            ) : (
+              <div className="text-sm text-slate-500">Failed to load database info.</div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Download */}
-        <Card id="section-backup-download" className="rounded-2xl border-slate-200/60 shadow-sm bg-white scroll-mt-24">
+        {/* ─────────────────────────────────────────────────────────── */}
+        {/* BACKUP DOWNLOAD                                              */}
+        {/* ─────────────────────────────────────────────────────────── */}
+
+        <Card id="section-backup-download" className="rounded-2xl border-emerald-200/60 shadow-sm bg-white scroll-mt-24">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Download className="size-5 text-slate-600" /> 3. Download Backup File
+              <Download className="size-5 text-emerald-600" /> Download Database Backup
             </CardTitle>
             <CardDescription>
-              Click below to generate and download a JSON backup file.
+              Click below to download a complete snapshot of your current database as a <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">.db</code> file.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Alert className="border-blue-300 bg-blue-50 text-blue-800">
-              <AlertTriangle className="size-4 text-blue-600" />
+              <Info className="size-4 text-blue-600" />
+              <AlertDescription>
+                <span className="font-semibold">What you get:</span> A single <code className="px-1 bg-blue-100 rounded text-xs">.db</code> file
+                containing the entire database — products, customers, sales, expenses, cash, stock, everything.
+                Save this file somewhere safe (USB drive, cloud folder, etc.).
+              </AlertDescription>
+            </Alert>
+
+            <Alert className="border-amber-300 bg-amber-50 text-amber-800">
+              <AlertTriangle className="size-4 text-amber-600" />
               <AlertDescription>
                 <span className="font-semibold">Heads up:</span> The download may take a few seconds
-                depending on how much data you have. Keep this file safe — anyone with access to it
+                depending on database size. Keep this file safe — anyone with access to it
                 can read your full business history.
               </AlertDescription>
             </Alert>
@@ -438,26 +353,26 @@ export default function DatabaseManagementPage() {
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
               <div className="text-sm text-slate-600">
                 <div className="font-semibold text-slate-800">
-                  Filter: <span className="text-emerald-700 capitalize">{filter}</span>
+                  Filename: <span className="text-emerald-700 font-mono">danishcattlefeed-backup-{today}.db</span>
                 </div>
-                {rangePreview && (
-                  <div className="text-xs text-slate-500 mt-0.5 font-mono">{rangePreview}</div>
-                )}
+                <div className="text-xs text-slate-500 mt-0.5">
+                  Generated from live database with consistency snapshot
+                </div>
               </div>
 
               <Button
                 onClick={handleDownload}
                 disabled={downloading}
-                className="gap-2 bg-emerald-600 hover:bg-emerald-700 min-w-[180px]"
+                className="gap-2 bg-emerald-600 hover:bg-emerald-700 min-w-[200px]"
                 size="lg"
               >
                 {downloading ? (
                   <>
-                    <Loader2 className="size-4 animate-spin" /> Generating…
+                    <Loader2 className="size-4 animate-spin" /> Creating…
                   </>
                 ) : (
                   <>
-                    <Download className="size-4" /> Download JSON Backup
+                    <Download className="size-4" /> Download .db Backup
                   </>
                 )}
               </Button>
@@ -466,7 +381,7 @@ export default function DatabaseManagementPage() {
         </Card>
 
         {/* ─────────────────────────────────────────────────────────── */}
-        {/* RESTORE SECTION                                                */}
+        {/* RESTORE SECTION                                             */}
         {/* ─────────────────────────────────────────────────────────── */}
 
         <div id="section-restore" className="pt-4 border-t border-slate-200/60 scroll-mt-24">
@@ -475,10 +390,9 @@ export default function DatabaseManagementPage() {
             <h2 className="text-xl font-bold text-slate-900">Restore from Backup</h2>
           </div>
           <p className="text-sm text-slate-600 mb-6">
-            Upload a previously downloaded backup JSON file. We'll generate a SQL script
-            you can review and run in Supabase SQL Editor to restore your data.
-            <span className="font-semibold text-slate-800"> This page does not write to your
-            database directly</span> — you stay in full control.
+            Upload a previously downloaded <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">.db</code> file
+            to replace the current database. A safety backup of your current database is automatically created
+            before restore, so you can always roll back if something goes wrong.
           </p>
         </div>
 
@@ -489,7 +403,7 @@ export default function DatabaseManagementPage() {
               <FileUp className="size-5 text-slate-600" /> 1. Select Backup File
             </CardTitle>
             <CardDescription>
-              Choose the <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">.json</code> file you
+              Choose the <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">.db</code> file you
               previously downloaded from this page.
             </CardDescription>
           </CardHeader>
@@ -497,18 +411,18 @@ export default function DatabaseManagementPage() {
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                  Backup JSON File
+                  Backup File (.db)
                 </Label>
                 <Input
                   ref={fileInputRef}
                   type="file"
-                  accept=".json,application/json"
+                  accept=".db,.sqlite,.sqlite3"
                   onChange={handleFileSelect}
                   className="cursor-pointer"
                 />
               </div>
               <div className="text-xs text-slate-500 sm:pb-2.5">
-                Max size: 50 MB
+                Max size: 500 MB
               </div>
             </div>
 
@@ -526,87 +440,44 @@ export default function DatabaseManagementPage() {
           </CardContent>
         </Card>
 
-        {/* Step 2 — pick mode */}
-        <Card id="section-restore-mode" className="rounded-2xl border-slate-200/60 shadow-sm bg-white scroll-mt-24">
+        {/* Step 2 — restore action */}
+        <Card id="section-restore-action" className="rounded-2xl border-slate-200/60 shadow-sm bg-white scroll-mt-24">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <ShieldCheck className="size-5 text-slate-600" /> 2. Choose Restore Mode
+              <ShieldCheck className="size-5 text-slate-600" /> 2. Restore Database
             </CardTitle>
             <CardDescription>
-              Pick how conflicts (same IDs already in DB) should be handled.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RadioGroup
-              value={restoreMode}
-              onValueChange={(v) => setRestoreMode(v as RestoreMode)}
-              className="grid grid-cols-1 gap-3"
-            >
-              {RESTORE_MODES.map((opt) => {
-                const isActive = restoreMode === opt.value;
-                return (
-                  <label
-                    key={opt.value}
-                    htmlFor={`rm-${opt.value}`}
-                    className={cn(
-                      "flex items-start space-x-3 rounded-xl border px-4 py-3.5 cursor-pointer transition-colors",
-                      isActive
-                        ? "border-amber-500 bg-amber-50/40"
-                        : "border-slate-200/60 bg-slate-50/40 hover:bg-slate-50"
-                    )}
-                  >
-                    <RadioGroupItem value={opt.value} id={`rm-${opt.value}`} className="mt-0.5" />
-                    <div className="space-y-0.5">
-                      <div className="text-sm font-semibold text-slate-800">{opt.label}</div>
-                      <div className="text-xs text-slate-500 leading-relaxed">{opt.description}</div>
-                    </div>
-                  </label>
-                );
-              })}
-            </RadioGroup>
-
-            <Alert className="mt-4 border-amber-300 bg-amber-50 text-amber-800">
-              <AlertTriangle className="size-4 text-amber-600" />
-              <AlertDescription>
-                <span className="font-semibold">Important:</span> Neither mode deletes existing rows.
-                <span className="font-semibold"> Safe Merge</span> will overwrite matching IDs with backup values;
-                <span className="font-semibold"> Append</span> will skip them entirely. Choose Merge if you want
-                the database to match the backup exactly (for missing rows you'll need to manually delete).
-              </AlertDescription>
-            </Alert>
-          </CardContent>
-        </Card>
-
-        {/* Step 3 — generate + download SQL */}
-        <Card id="section-restore-script" className="rounded-2xl border-slate-200/60 shadow-sm bg-white scroll-mt-24">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Terminal className="size-5 text-slate-600" /> 3. Generate &amp; Download SQL Script
-            </CardTitle>
-            <CardDescription>
-              We'll build a <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">.sql</code> file containing
-              all INSERT statements, wrapped in a transaction.
+              The current database will be replaced with the uploaded file. A safety backup is created automatically.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Alert className="border-blue-300 bg-blue-50 text-blue-800">
-              <ArrowRight className="size-4 text-blue-600" />
+              <ShieldCheck className="size-4 text-blue-600" />
               <AlertDescription>
-                <span className="font-semibold">After downloading:</span> Open
-                <span className="font-mono text-xs"> Supabase Dashboard → SQL Editor → New query</span>,
-                paste the script, review it, then click <span className="font-semibold">Run</span>.
-                If anything fails, the transaction rolls back automatically — no half-applied changes.
+                <span className="font-semibold">Safety guarantee:</span> Before restore, the system
+                automatically creates a timestamped backup of your <span className="font-semibold">current</span> database
+                in the <code className="px-1 bg-blue-100 rounded text-xs">backups/</code> folder. If restore fails or
+                anything goes wrong, your data is still safe.
+              </AlertDescription>
+            </Alert>
+
+            <Alert className="border-red-300 bg-red-50 text-red-800">
+              <AlertTriangle className="size-4 text-red-600" />
+              <AlertDescription>
+                <span className="font-semibold">Important:</span> After restore, you must <span className="font-semibold">RESTART</span> the
+                application to load the new database. The running app still holds the old database in memory.
+                Close the app completely and reopen it.
               </AlertDescription>
             </Alert>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
               <div className="text-sm text-slate-600">
                 <div className="font-semibold text-slate-800">
-                  Mode: <span className="text-amber-700 capitalize">{restoreMode}</span>
+                  Mode: <span className="text-amber-700">Full Replace</span>
                 </div>
                 <div className="text-xs text-slate-500 mt-0.5">
                   {restoreFile
-                    ? `File: ${restoreFile.name}`
+                    ? `Ready to restore: ${restoreFile.name}`
                     : "No file selected yet"}
                 </div>
               </div>
@@ -619,41 +490,97 @@ export default function DatabaseManagementPage() {
               >
                 {restoring ? (
                   <>
-                    <Loader2 className="size-4 animate-spin" /> Generating SQL…
+                    <Loader2 className="size-4 animate-spin" /> Restoring…
                   </>
                 ) : (
                   <>
-                    <Download className="size-4" /> Generate SQL Script
+                    <RefreshCw className="size-4" /> Restore Database
                   </>
                 )}
               </Button>
             </div>
+
+            {restoreResult && (
+              <Alert
+                className={
+                  restoreResult.ok
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                    : "border-red-300 bg-red-50 text-red-800"
+                }
+              >
+                {restoreResult.ok ? (
+                  <CheckCircle2 className="size-4 text-emerald-600" />
+                ) : (
+                  <AlertTriangle className="size-4 text-red-600" />
+                )}
+                <AlertDescription>
+                  <div className="font-semibold">
+                    {restoreResult.ok ? "Restore successful!" : "Restore failed"}
+                  </div>
+                  <div className="text-xs mt-1">{restoreResult.message}</div>
+                  {restoreResult.safetyBackup && (
+                    <div className="text-xs mt-1">
+                      <span className="font-semibold">Safety backup:</span>{" "}
+                      <code className="px-1 bg-white/60 rounded">{restoreResult.safetyBackup}</code>
+                    </div>
+                  )}
+                  {restoreResult.newDbSize && (
+                    <div className="text-xs mt-1">
+                      <span className="font-semibold">New DB size:</span> {restoreResult.newDbSize}
+                    </div>
+                  )}
+                  {restoreResult.ok && (
+                    <div className="text-xs mt-2 font-semibold">
+                      ⚠️ Please close and restart the application now.
+                    </div>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
           </CardContent>
         </Card>
 
-        {/* Step 4 — how to run (informational) */}
-        <Card className="rounded-2xl border-slate-200/60 bg-slate-50/50">
+        {/* Step 3 — how to use (informational) */}
+        <Card id="section-how-to" className="rounded-2xl border-slate-200/60 bg-slate-50/50">
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <AlertTriangle className="size-4 text-amber-600" /> How to Run the Script
+              <Info className="size-4 text-blue-600" /> How to Use Backup &amp; Restore
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ol className="text-xs text-slate-700 leading-relaxed space-y-1.5 list-decimal list-inside">
-              <li>Download the <code className="px-1 bg-slate-100 rounded">.sql</code> file using the button above.</li>
-              <li>Open <span className="font-semibold">Supabase Dashboard</span> → <span className="font-semibold">SQL Editor</span> → <span className="font-semibold">New query</span>.</li>
-              <li>Open the downloaded file in a text editor, select all, copy.</li>
-              <li>Paste into the SQL Editor and click <span className="font-semibold">Run</span>.</li>
-              <li>If you see any error, the whole script is rolled back — fix the issue and re-run.</li>
-              <li>On success, refresh the app — restored data should appear.</li>
-            </ol>
-            <Alert className="mt-3 border-red-300 bg-red-50 text-red-800">
-              <ShieldCheck className="size-4 text-red-600" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-sm font-bold text-emerald-700 mb-2 flex items-center gap-2">
+                  <Download className="size-4" /> Backup (Save Data)
+                </h4>
+                <ol className="text-xs text-slate-700 leading-relaxed space-y-1.5 list-decimal list-inside">
+                  <li>Click <span className="font-semibold">"Download .db Backup"</span> button above.</li>
+                  <li>Save the file somewhere safe — USB drive, cloud folder (Google Drive, OneDrive), etc.</li>
+                  <li>Recommended: take a backup every week or before any major change.</li>
+                  <li>The file is a complete snapshot — nothing is left out.</li>
+                </ol>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-amber-700 mb-2 flex items-center gap-2">
+                  <Upload className="size-4" /> Restore (Recover Data)
+                </h4>
+                <ol className="text-xs text-slate-700 leading-relaxed space-y-1.5 list-decimal list-inside">
+                  <li>Select the <code className="px-1 bg-slate-100 rounded">.db</code> file you want to restore.</li>
+                  <li>Click <span className="font-semibold">"Restore Database"</span> button.</li>
+                  <li>A safety backup of your current DB is created automatically.</li>
+                  <li>After success message, <span className="font-semibold">CLOSE the app completely</span>.</li>
+                  <li>Reopen the app — restored data will appear.</li>
+                </ol>
+              </div>
+            </div>
+
+            <Alert className="mt-4 border-blue-300 bg-blue-50 text-blue-800">
+              <Terminal className="size-4 text-blue-600" />
               <AlertDescription>
-                <span className="font-semibold">Never</span> run a restore script on the wrong database.
-                Always verify you're connected to the correct Supabase project before clicking Run.
-                The script does not delete data, but a wrong-database restore can pollute a clean DB
-                with stale rows.
+                <span className="font-semibold">Automatic backups:</span> The software also creates
+                automatic backups every 12 hours in the <code className="px-1 bg-blue-100 rounded text-xs">backups/</code> folder
+                inside the app data directory. So even if you forget to take a manual backup, you have
+                recent automatic ones to fall back on.
               </AlertDescription>
             </Alert>
           </CardContent>

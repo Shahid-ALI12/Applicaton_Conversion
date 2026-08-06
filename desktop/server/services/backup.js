@@ -12,12 +12,15 @@ export function startBackupScheduler() {
         mkdirSync(BACKUP_DIR, { recursive: true });
     }
     timer = setInterval(() => {
-        try {
-            runBackup();
-        }
-        catch (err) {
-            logger.error({ err }, 'Auto-backup failed');
-        }
+        // db.backup() is async — wrap in IIFE so setInterval callback can return synchronously
+        (async () => {
+            try {
+                await runBackup();
+            }
+            catch (err) {
+                logger.error({ err }, 'Auto-backup failed');
+            }
+        })();
     }, BACKUP_INTERVAL_MS);
     logger.info('Auto-backup scheduler started (12h)');
 }
@@ -27,11 +30,14 @@ export function stopBackupScheduler() {
         timer = null;
     }
 }
-export function runBackup() {
+/**
+ * Create a timestamped backup of the current database.
+ * NOTE: better-sqlite3's db.backup() is async (returns a Promise) — must be awaited.
+ */
+export async function runBackup() {
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     const file = path.join(BACKUP_DIR, `backup-${ts}.db`);
-    // better-sqlite3 backup API: db.backup(destinationFile)
-    db.backup(file);
+    await db.backup(file);
     pruneBackups();
     logger.info({ file }, 'Backup created');
     return file;

@@ -19,6 +19,7 @@ import { customerPaymentsRouter } from './modules/customerPayments.js';
 import { reportsRouter } from './modules/reports.js';
 import { settingsRouter } from './modules/settings.js';
 import { backupsRouter } from './modules/backups.js';
+import { databaseRouter } from './modules/database.js';
 import { createCrudRouter } from './modules/crudFactory.js';
 import { stockRouter } from './modules/stock.js';
 import { customersRouter } from './modules/customers.js';
@@ -92,6 +93,7 @@ export function createApp() {
   app.use('/api/reports', reportsRouter);
   app.use('/api/settings', settingsRouter);
   app.use('/api/backups', backupsRouter);
+  app.use('/api/database', databaseRouter);
 
   // Serve static client in production
   if (config.isProd) {
