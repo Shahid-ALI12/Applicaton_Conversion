@@ -76,6 +76,30 @@ set "APPDIR=%~dp0"
 set "APPEXE=%APPDIR%Danish Cattle Feed Software.exe"
 set "SHORTCUT=%USERPROFILE%\Desktop\Danish Cattle Feed Software.lnk"
 
+:: === Fresh install: wipe old database so test/old data doesn't leak in ===
+:: License file (license.json) is PRESERVED so user doesn't need to re-activate.
+:: Only the SQLite DB files are deleted; app will recreate a fresh DB on launch.
+set "APPDATA_DIR=%APPDATA%\Danish Cattle Feed Software"
+set "DATA_DIR=%APPDATA_DIR%\data"
+
+if exist "%DATA_DIR%\danishcattlefeed.db" (
+    echo [Fresh Install] Purging old database...
+    del /F /Q "%DATA_DIR%\danishcattlefeed.db" 2>NUL
+    del /F /Q "%DATA_DIR%\danishcattlefeed.db-wal" 2>NUL
+    del /F /Q "%DATA_DIR%\danishcattlefeed.db-shm" 2>NUL
+    del /F /Q "%DATA_DIR%\*.db" 2>NUL
+    del /F /Q "%DATA_DIR%\*.db-wal" 2>NUL
+    del /F /Q "%DATA_DIR%\*.db-shm" 2>NUL
+    echo [Fresh Install] Database cleared. App will start with empty data.
+)
+
+:: Also clear old backups (they reference the old DB)
+if exist "%APPDATA_DIR%\backups" (
+    rmdir /S /Q "%APPDATA_DIR%\backups" 2>NUL
+)
+
+:: NOTE: license.json is intentionally NOT deleted — preserves activation.
+
 :: Create desktop shortcut via PowerShell
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ws = New-Object -ComObject WScript.Shell; " ^
