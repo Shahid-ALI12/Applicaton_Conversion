@@ -8,6 +8,8 @@ export function LoginPage(): ReactNode {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [licenseCheck, setLicenseCheck] = useState<'loading' | 'ok'>('loading');
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [redirecting, setRedirecting] = useState(false);
 
   // License check: agar expired/tampered ho to seedha /license par bhej do
   useEffect(() => {
@@ -29,12 +31,30 @@ export function LoginPage(): ReactNode {
     e.preventDefault();
     setBusy(true);
     setError('');
+    setFailedAttempts(0); // reset on new attempt
     try {
       const res = await api.post<{ token: string; user: { id: number; name: string; role: string } }>('/api/auth/login', { username, password });
       setToken(res.token);
       window.location.assign('/');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Login fail hui');
+      const msg = err instanceof ApiError ? err.message : 'Login fail hui';
+      setError(msg);
+      // Login fail hote hi:
+      //   1. failedAttempts counter badhao
+      //   2. Agar 1st fail ho gaya → /license page AUTOMATIC open kar do
+      //      taake customer apni Machine ID dekh sake aur activation code
+      //      enter kar sake (naya customer wala flow)
+      setFailedAttempts(prev => {
+        const next = prev + 1;
+        if (next === 1) {
+          setRedirecting(true);
+          // 1.5 second delay taake user error message dekh le, phir redirect
+          setTimeout(() => {
+            window.location.assign('/license');
+          }, 1500);
+        }
+        return next;
+      });
     } finally {
       setBusy(false);
     }
@@ -95,7 +115,16 @@ export function LoginPage(): ReactNode {
         </div>
 
         {/* Login form (existing users ke liye) */}
-        {error && <div style={{ color: '#c00', marginBottom: 12, padding: 8, background: '#fee', borderRadius: 4, fontSize: 14 }}>{error}</div>}
+        {error && (
+          <div style={{ color: '#c00', marginBottom: 12, padding: 12, background: redirecting ? '#fff4e5' : '#fee', border: `1px solid ${redirecting ? '#ff6600' : '#c00'}`, borderRadius: 4, fontSize: 14 }}>
+            <div style={{ fontWeight: 600, marginBottom: redirecting ? 4 : 0 }}>{error}</div>
+            {redirecting && (
+              <div style={{ color: '#ff6600', fontSize: 13, marginTop: 4 }}>
+                ⏳ License activation page khul raha hai — apni Machine ID wahan se lein...
+              </div>
+            )}
+          </div>
+        )}
         <form onSubmit={onSubmit}>
           <div style={{ marginBottom: 12 }}>
             <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, color: '#333' }}>Username</label>
