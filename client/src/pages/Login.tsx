@@ -52,41 +52,63 @@ export function LoginPage(): ReactNode {
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f5f5f5' }}>
-      <div style={{ background: '#fff', padding: 32, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,.1)', width: 360 }}>
-        <h2 style={{ textAlign: 'center', marginBottom: 24, color: '#1a5632' }}>Danish Cattle Feed</h2>
-        {error && <div style={{ color: '#c00', marginBottom: 12, padding: 8, background: '#fee', borderRadius: 4 }}>{error}</div>}
-        <form onSubmit={onSubmit}>
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', marginBottom: 4 }}>Username</label>
-            <input value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username" style={{ width: '100%', padding: 8, border: '1px solid #ccc', borderRadius: 4 }} />
-          </div>
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', marginBottom: 4 }}>Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password" style={{ width: '100%', padding: 8, border: '1px solid #ccc', borderRadius: 4 }} />
-          </div>
-          <button type="submit" disabled={busy} style={{ width: '100%', padding: 10, background: '#1a5632', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 16 }}>
-            {busy ? 'Login ho raha hai...' : 'Login'}
-          </button>
-        </form>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f5f5f5', padding: 16 }}>
+      <div style={{ background: '#fff', padding: 28, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,.12)', width: 400, maxHeight: '100vh', overflowY: 'auto' }}>
+        <h2 style={{ textAlign: 'center', marginBottom: 6, color: '#1a5632', fontSize: 24 }}>Danish Cattle Feed</h2>
+        <p style={{ textAlign: 'center', marginBottom: 20, color: '#888', fontSize: 13 }}>Software Login</p>
 
-        {/* Divider */}
-        <div style={{ textAlign: 'center', margin: '20px 0 12px', color: '#999', fontSize: 13 }}>
-          ── ya ──
-        </div>
-
-        {/* New Customer button — license activation page par le jata hai
-            jahan Machine ID dikhti hai aur activation code paste karte hain */}
+        {/* ────────────────────────────────────────────
+            NEW CUSTOMER BUTTON — sab se upar, bright orange
+            taake kabhi miss na ho. Click karte hi /license
+            page khulta hai jahan Machine ID + activation hota hai.
+        ──────────────────────────────────────────── */}
         <button
           type="button"
           onClick={() => window.location.assign('/license')}
-          style={{ width: '100%', padding: 10, background: '#fff', color: '#1a5632', border: '1px solid #1a5632', borderRadius: 4, cursor: 'pointer', fontSize: 15, fontWeight: 600 }}
+          style={{
+            width: '100%',
+            padding: 16,
+            background: '#ff6600',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: 8,
+            cursor: 'pointer',
+            fontSize: 17,
+            fontWeight: 700,
+            marginBottom: 8,
+            boxShadow: '0 3px 8px rgba(255,102,0,.35)',
+            letterSpacing: 0.3,
+          }}
         >
-          🆕 New Customer — License Activate Karein
+          🆕 NEW CUSTOMER — Yahan Click Karein
         </button>
-        <p style={{ textAlign: 'center', marginTop: 8, fontSize: 12, color: '#888' }}>
-          Naya customer? Yahan se apni Machine ID lein aur activation code paste karein.
+        <p style={{ textAlign: 'center', marginTop: 0, marginBottom: 20, fontSize: 12, color: '#ff6600', fontWeight: 600 }}>
+          Naya customer? Machine ID lenay ke liye yahan click karein
         </p>
+
+        {/* Divider line */}
+        <div style={{ textAlign: 'center', margin: '0 0 20px', color: '#aaa', fontSize: 13, position: 'relative' }}>
+          <span style={{ background: '#fff', padding: '0 12px', position: 'relative', zIndex: 1 }}>
+            ── Pehle se registered? Login karein ──
+          </span>
+          <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: '#e0e0e0', zIndex: 0 }} />
+        </div>
+
+        {/* Login form (existing users ke liye) */}
+        {error && <div style={{ color: '#c00', marginBottom: 12, padding: 8, background: '#fee', borderRadius: 4, fontSize: 14 }}>{error}</div>}
+        <form onSubmit={onSubmit}>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, color: '#333' }}>Username</label>
+            <input value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username" style={{ width: '100%', padding: 10, border: '1px solid #ccc', borderRadius: 4, fontSize: 14, boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, color: '#333' }}>Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password" style={{ width: '100%', padding: 10, border: '1px solid #ccc', borderRadius: 4, fontSize: 14, boxSizing: 'border-box' }} />
+          </div>
+          <button type="submit" disabled={busy} style={{ width: '100%', padding: 12, background: '#1a5632', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 16, fontWeight: 600 }}>
+            {busy ? 'Login ho raha hai...' : 'Login'}
+          </button>
+        </form>
       </div>
     </div>
   );
