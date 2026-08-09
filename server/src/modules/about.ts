@@ -57,6 +57,7 @@ aboutRouter.get('/', requireAuth, (_req, res) => {
     // License-derived (read-only)
     customer_name: lic.customer_name,
     licensed_until: lic.licensed_until,
+    licensed_from: lic.licensed_from,
     days_left: lic.days_left,
     state: lic.state,
     machine_id: lic.machine_id,

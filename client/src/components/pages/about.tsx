@@ -18,6 +18,7 @@ interface AboutData {
   // License-derived (read-only)
   customer_name: string | null;
   licensed_until: string | null;
+  licensed_from: string | null;
   days_left: number;
   state: 'trial' | 'active' | 'expiring' | 'expired' | 'tampered';
   machine_id: string;
@@ -118,7 +119,18 @@ export default function About(): ReactNode {
   }
 
   // Progress calculation
-  const startDate = data.start_date || data.licensed_until;
+  // Priority: admin-set start_date > license activated_at (licensed_from) > derived from days_left
+  let startDate = data.start_date || data.licensed_from || '';
+  // Agar koi start date nahi mili, toh days_left se derive karo
+  // (assume yearly license = 365 days default, fallback 30 days)
+  if (!startDate && data.licensed_until) {
+    const end = new Date(data.licensed_until).getTime();
+    const now = Date.now();
+    // days_left se approximate start calculate karo
+    const approxTotalDays = data.days_left > 0 ? Math.max(30, Math.ceil((end - now) / 86_400_000)) : 365;
+    const startMs = end - approxTotalDays * 86_400_000;
+    startDate = new Date(startMs).toISOString().slice(0, 10);
+  }
   let progress = 0;
   let totalDays = 0;
   let elapsedDays = 0;

@@ -44,7 +44,7 @@ export const machineId = `${machineHash.slice(0, 4)}-${machineHash.slice(4, 8)}`
 const sealKey = createHash('sha256').update(`dcf-license-seal:${machineHash}`).digest();
 function sealOf(state) {
     return createHmac('sha256', sealKey)
-        .update(`${state.expiry}|${state.trial ? 1 : 0}|${state.last_seen}|${state.customer_name ?? ''}`)
+        .update(`${state.expiry}|${state.trial ? 1 : 0}|${state.last_seen}|${state.customer_name ?? ''}|${state.activated_at ?? ''}`)
         .digest('hex');
 }
 function writeState(state) {
@@ -56,12 +56,26 @@ function readState() {
         return 'missing';
     try {
         const stored = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
-        // Backward-compat: purane state files mein customer_name nahi tha
+        // Backward-compat: purane state files mein customer_name / activated_at nahi tha
         if (stored.customer_name === undefined)
             stored.customer_name = null;
+        if (stored.activated_at === undefined)
+            stored.activated_at = null;
         const { hmac, ...rest } = stored;
-        if (sealOf(rest) !== hmac)
+        if (sealOf(rest) !== hmac) {
+            // Backward-compat: purane state files (without activated_at) ke liye
+            // legacy seal try karo
+            const legacySeal = createHmac('sha256', sealKey)
+                .update(`${stored.expiry}|${stored.trial ? 1 : 0}|${stored.last_seen}|${stored.customer_name ?? ''}`)
+                .digest('hex');
+            if (legacySeal === hmac) {
+                // Purana file hai — naya field add karke re-seal kardo
+                const newState = { ...stored, activated_at: stored.last_seen };
+                writeState(newState);
+                return newState;
+            }
             return 'tampered';
+        }
         return stored;
     }
     catch {
@@ -91,13 +105,13 @@ function computeStatus() {
     let state = readState();
     if (state === 'missing') {
         const expiry = new Date(now.getTime() + TRIAL_DAYS * 86_400_000).toISOString().slice(0, 10);
-        writeState({ expiry, trial: true, last_seen: now.toISOString(), customer_name: null });
+        writeState({ expiry, trial: true, last_seen: now.toISOString(), customer_name: null, activated_at: now.toISOString() });
         state = readState();
         logger.info({ expiry }, 'License: fresh install — trial started');
     }
     if (state === 'tampered') {
         return {
-            state: 'tampered', machine_id: machineId, licensed_until: null,
+            state: 'tampered', machine_id: machineId, licensed_until: null, licensed_from: null,
             days_left: 0, trial: false, customer_name: null,
             message: 'License file kharab ya tabdeel hui hai — naya activation code darkar hai.',
         };
@@ -105,18 +119,18 @@ function computeStatus() {
     const lastSeen = new Date(state.last_seen).getTime();
     if (now.getTime() < lastSeen - CLOCK_TOLERANCE_MS) {
         return {
-            state: 'tampered', machine_id: machineId, licensed_until: state.expiry,
+            state: 'tampered', machine_id: machineId, licensed_until: state.expiry, licensed_from: state.activated_at,
             days_left: 0, trial: state.trial, customer_name: state.customer_name,
             message: 'System ki date/time peeche ki gayi hai — sahi karein ya naya code lein.',
         };
     }
     if (now.getTime() - lastSeen > HEARTBEAT_EVERY_MS) {
-        writeState({ expiry: state.expiry, trial: state.trial, last_seen: now.toISOString(), customer_name: state.customer_name });
+        writeState({ expiry: state.expiry, trial: state.trial, last_seen: now.toISOString(), customer_name: state.customer_name, activated_at: state.activated_at });
     }
     const daysLeft = daysBetween(now, state.expiry);
     if (daysLeft <= 0) {
         return {
-            state: 'expired', machine_id: machineId, licensed_until: state.expiry,
+            state: 'expired', machine_id: machineId, licensed_until: state.expiry, licensed_from: state.activated_at,
             days_left: 0, trial: state.trial, customer_name: state.customer_name,
             message: state.trial ? 'Trial khatam ho gaya — activation code lein.' : 'License muddat khatam — naya code lein.',
         };
@@ -125,6 +139,7 @@ function computeStatus() {
         state: daysLeft <= EXPIRY_WARN_DAYS ? 'expiring' : state.trial ? 'trial' : 'active',
         machine_id: machineId,
         licensed_until: state.expiry,
+        licensed_from: state.activated_at,
         days_left: daysLeft,
         trial: state.trial,
         customer_name: state.customer_name,
@@ -202,7 +217,7 @@ export function activateLicense(code) {
             .run(payload.n.trim(), payload.p, 'admin');
         logger.info({ name: payload.n, machineId }, 'License: admin user updated from activation');
     }
-    writeState({ expiry: payload.e, trial: false, last_seen: new Date().toISOString(), customer_name: payload.n.trim() });
+    writeState({ expiry: payload.e, trial: false, last_seen: new Date().toISOString(), customer_name: payload.n.trim(), activated_at: new Date().toISOString() });
     logger.info({ expiry: payload.e, machineId, customer: payload.n }, 'License activated');
     return licenseStatus(true);
 }

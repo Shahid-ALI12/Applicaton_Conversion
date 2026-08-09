@@ -3,6 +3,7 @@ export interface LicenseStatus {
     state: LicenseState;
     machine_id: string;
     licensed_until: string | null;
+    licensed_from: string | null;
     days_left: number;
     trial: boolean;
     message: string;
