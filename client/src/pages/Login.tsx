@@ -69,6 +69,24 @@ export function LoginPage(): ReactNode {
             {busy ? 'Login ho raha hai...' : 'Login'}
           </button>
         </form>
+
+        {/* Divider */}
+        <div style={{ textAlign: 'center', margin: '20px 0 12px', color: '#999', fontSize: 13 }}>
+          ── ya ──
+        </div>
+
+        {/* New Customer button — license activation page par le jata hai
+            jahan Machine ID dikhti hai aur activation code paste karte hain */}
+        <button
+          type="button"
+          onClick={() => window.location.assign('/license')}
+          style={{ width: '100%', padding: 10, background: '#fff', color: '#1a5632', border: '1px solid #1a5632', borderRadius: 4, cursor: 'pointer', fontSize: 15, fontWeight: 600 }}
+        >
+          🆕 New Customer — License Activate Karein
+        </button>
+        <p style={{ textAlign: 'center', marginTop: 8, fontSize: 12, color: '#888' }}>
+          Naya customer? Yahan se apni Machine ID lein aur activation code paste karein.
+        </p>
       </div>
     </div>
   );

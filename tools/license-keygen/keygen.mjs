@@ -11,12 +11,19 @@
  *   delete                  Code delete karna (machine-id / name / line# se)
  *   help                    Ye help
  *
- * ── Code generation (CLI mode) ──
+ * ── Code generation (CLI mode) — FULL code (naya customer, password set hoga) ──
  *   node keygen.mjs code \
  *     --machine 3EE4-35A6 \
  *     --name "Ahmad Khan" \
  *     --password "secret123" \
  *     --months 1
+ *
+ * ── Code generation — RENEWAL code (sirf license extend, password unchanged) ──
+ *   node keygen.mjs code \
+ *     --machine 3EE4-35A6 \
+ *     --name "Ahmad Khan" \
+ *     --months 1
+ *   (password skip karein → renewal code banega)
  *
  * Duration: --months N | --days N | --until YYYY-MM-DD
  *
@@ -157,16 +164,17 @@ if (command === 'code') {
 
   let machine, name, password, until;
 
-  if (cliMachine && cliName && cliPassword) {
+  if (cliMachine && cliName) {
+    // CLI mode — password optional hai (renewal ke liye skip karein)
     machine = cliMachine.toUpperCase().trim();
     name = cliName.trim();
-    password = cliPassword;
+    password = cliPassword || '';  // empty = renewal code
     until = computeUntil(cliMonths, cliDays, cliUntil);
   } else {
     const result = await interactiveInput();
     machine = result.machine;
     name = result.name;
-    password = result.password;
+    password = result.password;  // empty = renewal code
     until = result.until;
   }
 
@@ -177,8 +185,9 @@ if (command === 'code') {
   if (!name || name.length < 2) {
     fail('Customer Name kam se kam 2 characters ka hona chahiye.');
   }
-  if (!password || password.length < 6) {
-    fail('Password kam se kam 6 characters ka hona chahiye.');
+  // Password optional hai — agar diya to min 6 chars
+  if (password && password.length < 6) {
+    fail('Password kam se kam 6 characters ka hona chahiye (ya renewal ke liye skip karein).');
   }
   if (!until || !/^\d{4}-\d{2}-\d{2}$/.test(until)) {
     fail(`Expiry date format ghalat hai: "${until}" — format YYYY-MM-DD`);
@@ -186,6 +195,8 @@ if (command === 'code') {
   if (new Date(until) <= new Date(todayISO())) {
     fail(`Expiry date (${until}) aaj ke baad ki honi chahiye.`);
   }
+
+  const isRenewal = !password;
 
   // ── Duplicate check (same machine-id + non-expired entry) ──
   const entries = readLogEntries();
@@ -202,7 +213,9 @@ if (command === 'code') {
   }
 
   // ── Generate code ──
-  const hash = bcrypt.hashSync(password, 11);
+  // Full code: p = bcrypt hash (user table update hoga, naya password set)
+  // Renewal code: p = "" (user table nahi chedo, sirf license extend)
+  const hash = password ? bcrypt.hashSync(password, 11) : '';
   const payload = JSON.stringify({ m: machine, n: name, p: hash, e: until });
   const privateKey = createPrivateKey(readFileSync(privateKeyFile, 'utf8'));
   const signature = sign(null, Buffer.from(payload, 'utf8'), privateKey);
@@ -214,24 +227,37 @@ if (command === 'code') {
     machine,
     name,
     until,
-    password_length: password.length,
+    password_length: password ? password.length : 0,
+    type: isRenewal ? 'renewal' : 'full',
     deleted: false,
   };
   appendFileSync(logFile, JSON.stringify(logEntry) + '\n', 'utf8');
 
   // ── Output ──
   console.log('\n═══════════════════════════════════════════════════════════════');
-  console.log('  ✅  ACTIVATION CODE GENERATE HO GAYA');
+  console.log(`  ✅  ${isRenewal ? 'RENEWAL' : 'ACTIVATION'} CODE GENERATE HO GAYA`);
   console.log('═══════════════════════════════════════════════════════════════\n');
   console.log(code);
   console.log('\n═══════════════════════════════════════════════════════════════\n');
   console.log(`  Customer : ${name}`);
   console.log(`  Machine  : ${machine}`);
-  console.log(`  Username : admin  (fixed)`);
-  console.log(`  Password : ${'*'.repeat(Math.min(password.length, 20))} (${password.length} chars)`);
+  console.log(`  Type     : ${isRenewal ? '🔄 RENEWAL (password unchanged)' : '🆕 FULL (password set)'}`);
+  if (!isRenewal) {
+    console.log(`  Username : admin  (fixed)`);
+    console.log(`  Password : ${'*'.repeat(Math.min(password.length, 20))} (${password.length} chars)`);
+  } else {
+    console.log(`  Username : admin  (customer purana password use karega)`);
+  }
   console.log(`  Valid    : ${until} tak`);
   console.log('');
-  console.log('  💡  Code ko copy karke customer ko WhatsApp karein.');
+  if (isRenewal) {
+    console.log('  💡  Ye RENEWAL code hai — customer ka password change NAHI hoga.');
+    console.log('      Customer apna purana username/password se login karega.');
+    console.log('      Sirf license ki muddat extend hogi.');
+  } else {
+    console.log('  💡  Ye FULL code hai — customer ka password set hoga.');
+    console.log('      Customer admin / <password> se login karega.');
+  }
   console.log(`  📝  Code log file mein bhi save hua: ${path.basename(logFile)}`);
   console.log('');
   process.exit(0);
@@ -418,12 +444,27 @@ Usage:
   node keygen.mjs delete --machine XXXX-XXXX    Machine ID se delete
   node keygen.mjs delete --name "Ahmad"   Customer name se delete
 
-CLI code generation:
-  node keygen.mjs code \\
-    --machine XXXX-XXXX \\
-    --name "Customer Name" \\
-    --password "secret123" \\
-    --months 1                            (--days N ya --until YYYY-MM-DD bhi)
+══════════════════════════════════════════════════════════════
+  CODE TYPES:
+══════════════════════════════════════════════════════════════
+
+  🆕 FULL code (naya customer — password set hoga):
+      node keygen.mjs code \\
+        --machine XXXX-XXXX \\
+        --name "Customer Name" \\
+        --password "secret123" \\
+        --months 1
+
+  🔄 RENEWAL code (purana customer — sirf license extend, password unchanged):
+      node keygen.mjs code \\
+        --machine XXXX-XXXX \\
+        --name "Customer Name" \\
+        --months 1
+      (password skip karein → renewal code banega)
+
+  Renewal code ka faida: customer ka password change nahi hota,
+  customer apna purana username/password se login karta hai.
+  Sirf license ki muddat extend hoti hai.
 
 Duration (koi ek):
   --months 1        1 mahine baad expire
@@ -527,6 +568,20 @@ async function interactiveInput() {
     console.log('║   Danish Cattle Feed — License Code Generator                 ║');
     console.log('╚═══════════════════════════════════════════════════════════════╝\n');
 
+    // ── Code type: Full vs Renewal ──
+    console.log('🔹 Code type select karein:');
+    console.log('   [1] 🆕 FULL code      (naya customer — password set hoga)');
+    console.log('   [2] 🔄 RENEWAL code   (purana customer — sirf license extend, password unchanged)');
+    let codeType = '';
+    const typeChoice = (await rl.question('\n   Choice [1/2]: ')).trim();
+    if (typeChoice === '2') {
+      codeType = 'renewal';
+    } else if (typeChoice === '1') {
+      codeType = 'full';
+    } else {
+      fail('Invalid choice — 1 (full) ya 2 (renewal) daayein.');
+    }
+
     // Machine ID
     let machine = '';
     while (true) {
@@ -543,12 +598,16 @@ async function interactiveInput() {
       console.log('   ❌ Name kam se kam 2 characters ka hona chahiye.\n');
     }
 
-    // Password
+    // Password — sirf full code ke liye
     let password = '';
-    while (true) {
-      password = (await rl.question('🔹 Password (min 6 chars): ')).trim();
-      if (password.length >= 6) break;
-      console.log('   ❌ Password kam se kam 6 characters ka hona chahiye.\n');
+    if (codeType === 'full') {
+      while (true) {
+        password = (await rl.question('🔹 Password (min 6 chars): ')).trim();
+        if (password.length >= 6) break;
+        console.log('   ❌ Password kam se kam 6 characters ka hona chahiye.\n');
+      }
+    } else {
+      console.log('🔹 Password: (skip — renewal code, password change nahi hoga)');
     }
 
     // Duration
@@ -585,10 +644,15 @@ async function interactiveInput() {
 
     // Summary + confirm
     console.log('\n─'.repeat(63));
+    console.log(`  Type     : ${codeType === 'renewal' ? '🔄 RENEWAL' : '🆕 FULL'}`);
     console.log(`  Machine  : ${machine}`);
     console.log(`  Name     : ${name}`);
-    console.log(`  Username : admin  (fixed)`);
-    console.log(`  Password : ${'*'.repeat(Math.min(password.length, 20))} (${password.length} chars)`);
+    if (codeType === 'full') {
+      console.log(`  Username : admin  (fixed)`);
+      console.log(`  Password : ${'*'.repeat(Math.min(password.length, 20))} (${password.length} chars)`);
+    } else {
+      console.log(`  Username : admin  (customer purana password use karega)`);
+    }
     console.log(`  Valid    : ${until} tak`);
     console.log('─'.repeat(63));
 

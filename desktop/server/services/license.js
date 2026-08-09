@@ -202,20 +202,39 @@ export function activateLicense(code) {
     if (!payload.n || !payload.n.trim()) {
         throw new LicenseError('Code mein customer name nahi hai — keygen update karein.');
     }
-    if (!payload.p || !payload.p.startsWith('$2')) {
+    // p field ab optional hai:
+    //   - Agar p present hai ($2 se start) → full code → admin user upsert hoga
+    //   - Agar p empty/missing hai → renewal code → sirf license extend hoga, user table nahi chedo
+    if (payload.p && !payload.p.startsWith('$2')) {
         throw new LicenseError('Code mein password hash ghalat hai.');
     }
-    // Upsert admin user (username hamesha 'admin', naam + password key se aate hain)
-    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
-    if (!existing) {
-        db.prepare('INSERT INTO users (name, username, password_hash, role) VALUES (?, ?, ?, ?)')
-            .run(payload.n.trim(), 'admin', payload.p, 'admin');
-        logger.info({ name: payload.n, machineId }, 'License: admin user created from activation');
+    // ── Admin user upsert (sirf full code ke liye) ──
+    // Renewal code (p empty) par user table nahi chedo — customer apna purana
+    // username/password use karta hai. Is liye renewal sirf us machine par
+    // chalega jahan pehle se admin user mojood hai.
+    if (payload.p && payload.p.startsWith('$2')) {
+        const existing = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
+        if (!existing) {
+            db.prepare('INSERT INTO users (name, username, password_hash, role) VALUES (?, ?, ?, ?)')
+                .run(payload.n.trim(), 'admin', payload.p, 'admin');
+            logger.info({ name: payload.n, machineId }, 'License: admin user created from activation');
+        }
+        else {
+            db.prepare('UPDATE users SET name = ?, password_hash = ? WHERE username = ?')
+                .run(payload.n.trim(), payload.p, 'admin');
+            logger.info({ name: payload.n, machineId }, 'License: admin user updated from activation');
+        }
     }
     else {
-        db.prepare('UPDATE users SET name = ?, password_hash = ? WHERE username = ?')
-            .run(payload.n.trim(), payload.p, 'admin');
-        logger.info({ name: payload.n, machineId }, 'License: admin user updated from activation');
+        // Renewal code — password change nahi hoga
+        // Agar is machine par pehle se koi admin user nahi hai (fresh install
+        // jahan seed ka default admin bhi nahi bana), to customer login nahi kar
+        // payega. Is case mein clear error do.
+        const existing = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
+        if (!existing) {
+            throw new LicenseError('Ye renewal code hai (bina password ke). Pehle full activation code chahiye jisme password ho — software walay se full code lein.');
+        }
+        logger.info({ name: payload.n, machineId }, 'License: renewal activation (password unchanged)');
     }
     writeState({ expiry: payload.e, trial: false, last_seen: new Date().toISOString(), customer_name: payload.n.trim(), activated_at: new Date().toISOString() });
     logger.info({ expiry: payload.e, machineId, customer: payload.n }, 'License activated');
