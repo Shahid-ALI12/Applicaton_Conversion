@@ -75,6 +75,16 @@ function buildMenu() {
     { label: 'View', submenu: [{ role: 'reload' }, { type: 'separator' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'resetZoom' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
     { label: 'Help', submenu: [
       { label: `Danish Cattle Feed Software v${app.getVersion()}`, enabled: false },
+      { type: 'separator' },
+      // License page hamesha accessible — chahe license active ho ya na ho.
+      // Admin is se Machine ID dekh sakta hai, renewal code paste kar sakta hai,
+      // ya naya activation kar sakta hai.
+      { label: '🔑 License & Machine ID', click: () => {
+        if (mainWindow && serverPort) {
+          mainWindow.loadURL(`http://127.0.0.1:${serverPort}/license`);
+          mainWindow.focus();
+        }
+      } },
       { label: 'Data Folder kholein', click: () => shell.openPath(app.getPath('userData')) },
     ] },
   ]));
